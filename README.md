@@ -364,13 +364,6 @@ Cenários testados:
 - **Pandas v2.0:** Processamento de dados
 - **Matplotlib v3.7:** Visualização de gráficos
 
-## Documentação Adicional
-
-- **[INSTALL.md](INSTALL.md):** Guia detalhado de instalação
-- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md):** Migração Python → Go
-- **[testing/go-api/README.md](testing/go-api/README.md):** Documentação da API Go
-- **[testing/EXECUTAR_TESTES_TOLERANCIA.md](testing/EXECUTAR_TESTES_TOLERANCIA.md):** Testes de falha
-
 ## Licença
 
 Este projeto é parte de um Trabalho de Conclusão de Curso (TCC) desenvolvido para fins acadêmicos.
