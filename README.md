@@ -8,15 +8,15 @@ Sistema de gerenciamento de logs desenvolvido como trabalho de conclusão de cur
 - PostgreSQL 15 em cluster primary-standby
 - Replicação streaming síncrona
 - Failover automático
-- API REST em Go 1.18 com framework Gin
+- API REST em Go 1.18 com framework Gin v1.9.1
 
 ### Arquitetura Híbrida
-- MongoDB v5.0.21 para armazenamento off-chain
+- MongoDB v7.0 para armazenamento off-chain
 - Hyperledger Fabric v2.4 para blockchain (consenso Raft)
 - Write-Ahead Log (WAL) para durabilidade (0% perda de dados)
 - Redis para cache (opcional)
 - Merkle Tree para integridade criptográfica
-- API REST em Go 1.18 com framework Gin
+- API REST em Go 1.18 com framework Gin v1.9.1
 - Chaincode em Go para registro de hashes no ledger
 
 ## Requisitos
@@ -299,7 +299,7 @@ tcc-log-management/
 - **Concorrência nativa:** Goroutines para processamento paralelo
 - **Performance:** Compilação nativa, baixo consumo de CPU (0.4-30%)
 - **Connection pooling:** MongoDB (max 100 conexões), PostgreSQL (max 20)
-- **Framework Gin:** Router de alta performance
+- **Framework Gin v1.9.1:** Router de alta performance
 - **Drivers nativos:** pgx (PostgreSQL), mongo-driver (MongoDB)
 
 ### Arquitetura Híbrida
@@ -349,7 +349,7 @@ Cenários testados:
 
 ### Backend
 - **Go 1.18:** Linguagem principal da API
-- **Gin Framework:** Router HTTP de alta performance
+- **Gin Framework v1.9.1:** Router HTTP de alta performance
 - **fabric-sdk-go v1.0.0:** SDK oficial Hyperledger Fabric
 - **pgx v5.4:** Driver PostgreSQL nativo
 - **mongo-driver v1.13.4:** Driver MongoDB oficial
@@ -357,7 +357,7 @@ Cenários testados:
 
 ### Blockchain & Databases
 - **Hyperledger Fabric v2.4:** Blockchain permissionada
-- **MongoDB v5.0.21:** Banco NoSQL para logs
+- **MongoDB v7.0:** Banco NoSQL para logs
 - **PostgreSQL v15:** Banco relacional tradicional
 - **CouchDB:** State database do Fabric
 
