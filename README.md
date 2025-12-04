@@ -5,25 +5,25 @@ Sistema de gerenciamento de logs desenvolvido como trabalho de conclusão de cur
 ## Arquitetura
 
 ### Arquitetura Tradicional
-- PostgreSQL 13.12 em cluster primary-standby
+- PostgreSQL 15 em cluster primary-standby
 - Replicação streaming síncrona
 - Failover automático
-- API REST em Go 1.21.5 com framework Gin
+- API REST em Go 1.18 com framework Gin
 
 ### Arquitetura Híbrida
 - MongoDB v5.0.21 para armazenamento off-chain
-- Hyperledger Fabric v2.4.9 para blockchain (consenso Raft)
+- Hyperledger Fabric v2.4 para blockchain (consenso Raft)
 - Write-Ahead Log (WAL) para durabilidade (0% perda de dados)
 - Redis para cache (opcional)
 - Merkle Tree para integridade criptográfica
-- API REST em Go 1.21.5 com framework Gin
+- API REST em Go 1.18 com framework Gin
 - Chaincode em Go para registro de hashes no ledger
 
 ## Requisitos
 
 - Docker 24.x
 - Docker Compose 2.0+
-- Go 1.21.5+ (para API de testes)
+- Go 1.18+ (para API de testes)
 - Python 3.10+ (para análise de resultados)
 - Ubuntu 22.04 LTS (recomendado, via WSL2 no Windows)
 - 8 vCPUs (AMD Ryzen 7 5700X3D ou equivalente)
@@ -66,7 +66,7 @@ As configurações estão em `testing/go-api/config.yaml`. Exemplo:
 
 ```yaml
 server:
-  port: 8080
+  port: 5001
   mode: release
 
 mongodb:
@@ -140,7 +140,7 @@ cd testing/go-api
 ./bin/log-api
 ```
 
-A API estará disponível em `http://localhost:8080`
+A API estará disponível em `http://localhost:5001`
 
 #### Testar
 
@@ -169,7 +169,7 @@ cd testing
 
 ```bash
 cd testing
-python src/performance_tester.py --scenario S5 --architecture hybrid --api-url http://localhost:8080
+python src/performance_tester.py --scenario S5 --architecture hybrid --api-url http://localhost:5001
 ```
 
 ### Cenários Disponíveis
@@ -203,7 +203,7 @@ Os resultados serão salvos em:
 
 Após iniciar a API, acesse a documentação interativa:
 
-**http://localhost:8080/swagger/index.html**
+**http://localhost:5001/swagger/index.html**
 
 ### Endpoints Principais
 
@@ -227,7 +227,7 @@ Após iniciar a API, acesse a documentação interativa:
 
 ```bash
 # Criar log
-curl -X POST http://localhost:8080/api/v1/logs \
+curl -X POST http://localhost:5001/api/v1/logs \
   -H "Content-Type: application/json" \
   -d '{
     "timestamp": "2025-11-16T10:30:00Z",
@@ -241,10 +241,10 @@ curl -X POST http://localhost:8080/api/v1/logs \
   }'
 
 # Listar logs com filtro
-curl "http://localhost:8080/api/v1/logs?source=auth-service&severity=ERROR&limit=10"
+curl "http://localhost:5001/api/v1/logs?source=auth-service&severity=ERROR&limit=10"
 
 # Verificar integridade Merkle
-curl -X POST http://localhost:8080/api/v1/merkle/verify \
+curl -X POST http://localhost:5001/api/v1/merkle/verify \
   -H "Content-Type: application/json" \
   -d '{
     "batchId": "batch-123",
@@ -275,7 +275,10 @@ tcc-log-management/
 │   │   │   ├── database/      # Clients MongoDB/PostgreSQL
 │   │   │   ├── fabric/        # Integração Fabric SDK
 │   │   │   ├── merkle/        # Merkle Tree
-│   │   │   └── wal/           # Write-Ahead Log
+│   │   │   ├── wal/           # Write-Ahead Log
+│   │   │   ├── models/        # Modelos de dados
+│   │   │   ├── middleware/    # Middlewares HTTP
+│   │   │   └── cache/         # Implementação Redis
 │   │   ├── docs/              # Swagger docs
 │   │   ├── Dockerfile
 │   │   ├── Makefile
@@ -345,17 +348,17 @@ Cenários testados:
 ## Tecnologias Utilizadas
 
 ### Backend
-- **Go 1.21.5:** Linguagem principal da API
+- **Go 1.18:** Linguagem principal da API
 - **Gin Framework:** Router HTTP de alta performance
 - **fabric-sdk-go v1.0.0:** SDK oficial Hyperledger Fabric
 - **pgx v5.4:** Driver PostgreSQL nativo
-- **mongo-driver v1.12:** Driver MongoDB oficial
+- **mongo-driver v1.13.4:** Driver MongoDB oficial
 - **gopsutil v3.23:** Monitoramento de recursos
 
 ### Blockchain & Databases
-- **Hyperledger Fabric v2.4.9:** Blockchain permissionada
+- **Hyperledger Fabric v2.4:** Blockchain permissionada
 - **MongoDB v5.0.21:** Banco NoSQL para logs
-- **PostgreSQL v13.12:** Banco relacional tradicional
+- **PostgreSQL v15:** Banco relacional tradicional
 - **CouchDB:** State database do Fabric
 
 ### DevOps & Análise
