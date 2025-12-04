@@ -366,4 +366,4 @@ Cenários testados:
 
 ## Licença
 
-Este projeto é parte de um Trabalho de Conclusão de Curso (TCC) desenvolvido para fins acadêmicos.
+Este projeto está licenciado sob a Licença Apache 2.0 - veja o arquivo [LICENSE](LICENSE) para detalhes.
