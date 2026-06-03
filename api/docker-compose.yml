@@ -1,0 +1,85 @@
+services:
+  go-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tcc-go-api
+    hostname: go-api
+    ports:
+      - "5001:5001"  # API port
+      - "9090:9090"  # Metrics port
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - wal-data:/var/log/tcc-wal
+      - /var/run/docker.sock:/var/run/docker.sock  # For Fabric chaincode invocation
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=5001
+      - MONGO_URL=mongodb://mongodb:27017
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - FABRIC_API_URL=http://fabric-api:4000
+      - WAL_DIRECTORY=/var/log/tcc-wal
+      - LOG_LEVEL=info
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - tcc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  mongodb:
+    image: mongo:7.0
+    container_name: tcc-mongodb
+    hostname: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=logdb
+    networks:
+      - tcc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: tcc-redis
+    hostname: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - tcc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  mongodb-data:
+    driver: local
+  redis-data:
+    driver: local
+  wal-data:
+    driver: local
+
+networks:
+  tcc-network:
+    external: true
+    name: tcc_log_network

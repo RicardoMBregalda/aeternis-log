@@ -1,0 +1,71 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+log-api
+log-api-linux
+log-api-windows
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.out
+coverage.html
+
+# Profiling
+*.prof
+cpu.prof
+mem.prof
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Environment files
+.env
+.env.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Swagger auto-generated files
+docs/docs.go
+docs/swagger.json
+docs/swagger.yaml
+
+# Logs
+*.log
+logs/
+
+# WAL files (development)
+/var/log/tcc-wal/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Air (hot reload)
+tmp/
+.air.toml
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Build artifacts
+build/
+dist/

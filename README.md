@@ -1,372 +1,102 @@
-# Sistema de Gerenciamento de Logs - Arquitetura Híbrida
+# Log Management — Tamper-Evident Log Anchoring
 
-Sistema de gerenciamento de logs desenvolvido como trabalho de conclusão de curso (TCC), comparando arquitetura tradicional baseada em PostgreSQL com arquitetura híbrida utilizando MongoDB, Hyperledger Fabric v2.4.9 e blockchain.
+API de gerenciamento de logs com **prova criptográfica de integridade**. Os logs vão para o MongoDB (rápido, consultável), são agrupados em **Merkle Trees**, e a raiz de cada lote é ancorada no **Hyperledger Fabric** (imutável, auditável). Um **Write-Ahead Log (WAL)** com `fsync` garante zero perda de dados antes de qualquer processamento.
+
+Qualquer adulteração é detectável matematicamente: um auditor recalcula o Merkle Root a partir do MongoDB e compara com o que está na blockchain.
+
+> **Vertical de produto:** Compliance & Audit Trail. Direção e plano em [ROADMAP.md](ROADMAP.md).
 
 ## Arquitetura
 
-### Arquitetura Tradicional
-- PostgreSQL 15 em cluster primary-standby
-- Replicação streaming síncrona
-- Failover automático
-- API REST em Go 1.18 com framework Gin v1.9.1
+```
+POST /logs ──► WAL (fsync) ──► MongoDB ──► batch (Merkle root) ──► âncora no Fabric
+```
 
-### Arquitetura Híbrida
-- MongoDB v7.0 para armazenamento off-chain
-- Hyperledger Fabric v2.4 para blockchain (consenso Raft)
-- Write-Ahead Log (WAL) para durabilidade (0% perda de dados)
-- Redis para cache (opcional)
-- Merkle Tree para integridade criptográfica
-- API REST em Go 1.18 com framework Gin v1.9.1
-- Chaincode em Go para registro de hashes no ledger
+| Componente | Papel |
+|---|---|
+| **API Go** (`api/`) | REST (Gin), logging estruturado (zerolog), WAL, batching por Merkle Tree |
+| **MongoDB** | Armazenamento off-chain dos logs (camada quente) |
+| **Redis** | Cache opcional (degradação graciosa se ausente) |
+| **Hyperledger Fabric** (`hybrid-architecture/`) | Blockchain permissionada (consenso Raft) que guarda as raízes de Merkle; chaincode em Go |
+| **WAL** | Durabilidade (0% de perda) com `O_SYNC` + `fsync` |
 
-## Requisitos
+## Pré-requisitos
 
-- Docker 24.x
-- Docker Compose 2.0+
-- Go 1.18+ (para API de testes)
-- Python 3.10+ (para análise de resultados)
-- Ubuntu 22.04 LTS (recomendado, via WSL2 no Windows)
-- 8 vCPUs (AMD Ryzen 7 5700X3D ou equivalente)
-- 16GB RAM DDR4
-- 100GB SSD NVMe
+- Docker + Docker Compose
+- Go 1.18+ (para build/test nativo)
+- `make`
 
-## Instalação
-
-### 1. Clonar Repositório
+## Início rápido
 
 ```bash
-git clone <repository-url>
-cd tcc-log-management
+make up        # sobe TUDO: blockchain (Fabric) + API + MongoDB + Redis
+make down      # para tudo
+make help      # lista todos os comandos
 ```
 
-### 2. Compilar API Go
+Para desenvolvimento sem a blockchain:
 
 ```bash
-cd testing/go-api
-make build
+make dev       # sobe só MongoDB + Redis
+make run       # roda a API nativamente (Go)
+# ou
+make api       # sobe a API em container (sem o Fabric)
 ```
 
-Ou usando Docker:
+A API sobe em **http://localhost:5001** — Swagger em `/swagger/index.html`, health em `/health`.
+
+> A rede Fabric e a API compartilham a rede Docker `tcc_log_network`, criada automaticamente pelo `make`. Era a ausência dela que antes fazia o `docker compose up` não criar nada.
+
+## Estrutura do projeto
+
+```
+.
+├── api/                      # API Go (o produto)
+│   ├── cmd/api/              # entrypoint
+│   ├── internal/             # handlers, database, fabric, merkle, wal, logger, ...
+│   ├── pkg/config/           # configuração
+│   ├── Dockerfile
+│   └── docker-compose.yml    # API + MongoDB + Redis
+├── hybrid-architecture/
+│   ├── chaincode/            # smart contract (Go)
+│   └── fabric-network/       # rede Fabric (peers, orderer, CA, scripts)
+├── Makefile                  # orquestração (make up / down / dev / ...)
+├── ROADMAP.md
+└── README.md
+```
+
+## API — principais endpoints
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/logs` | Cria um log (hash automático + WAL) |
+| `GET` | `/logs` | Lista com filtros (`source`, `level`, `limit`, `offset`) |
+| `GET` | `/logs/:id` | Busca por ID |
+| `POST` | `/merkle/force-batch` | Força a criação de um lote |
+| `POST` | `/merkle/verify/:id` | Verifica a integridade de um lote (Merkle proof) |
+| `GET` | `/merkle/batches` | Lista lotes |
+| `GET` | `/health` · `/stats` | Saúde e estatísticas |
+
+Exemplo:
 
 ```bash
-cd testing/go-api
-docker-compose up -d
+curl -X POST http://localhost:5001/logs \
+  -H 'Content-Type: application/json' \
+  -d '{"source": "auth-service", "level": "INFO", "message": "User login successful"}'
 ```
 
-### 3. Instalar Dependências Python (para análise de resultados)
+## Configuração
+
+A API lê `api/config.yaml` e aceita override por variáveis de ambiente (ver `api/.env.example`). Seções: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`.
+
+## Desenvolvimento
 
 ```bash
-cd testing
-pip install -r requirements.txt
+make build     # compila a API
+make test      # go test ./...
+make vet       # go vet ./...
 ```
-
-### 4. Configurar Variáveis de Ambiente
-
-As configurações estão em `testing/go-api/config.yaml`. Exemplo:
-
-```yaml
-server:
-  port: 5001
-  mode: release
-
-mongodb:
-  uri: "mongodb://localhost:27017"
-  database: "logdb"
-
-postgres:
-  host: "localhost"
-  port: 5432
-  database: "logdb"
-
-fabric:
-  peer_endpoint: "localhost:7051"
-  channel: "logchannel"
-```
-
-## Uso
-
-### Arquitetura Tradicional (PostgreSQL)
-
-#### Iniciar
-
-```bash
-cd traditional-architecture
-./start-traditional.sh
-```
-
-O script irá:
-- Iniciar containers PostgreSQL primary e standby
-- Configurar replicação streaming
-- Criar banco de dados e tabelas
-
-#### Testar
-
-```bash
-./test-traditional.sh
-```
-
-#### Parar
-
-```bash
-./stop-traditional.sh
-```
-
-### Arquitetura Híbrida (MongoDB + Fabric)
-
-#### Iniciar
-
-```bash
-cd hybrid-architecture
-./fabric-network/start-network.sh
-```
-
-O script irá:
-- Gerar artefatos criptográficos
-- Iniciar rede Hyperledger Fabric
-- Criar canal e instalar chaincode
-- Iniciar MongoDB e Redis
-
-#### Iniciar API Go
-
-```bash
-cd testing/go-api
-make run
-```
-
-Ou usando o binário compilado:
-
-```bash
-cd testing/go-api
-./bin/log-api
-```
-
-A API estará disponível em `http://localhost:5001`
-
-#### Testar
-
-```bash
-cd hybrid-architecture
-./fabric-network/test-network.sh
-```
-
-#### Parar
-
-```bash
-cd hybrid-architecture
-./fabric-network/stop-network.sh
-```
-
-## Testes de Performance
-
-### Executar Todos os Cenários (S1-S9)
-
-```bash
-cd testing
-./run_all_tests.sh
-```
-
-### Executar Cenário Específico
-
-```bash
-cd testing
-python src/performance_tester.py --scenario S5 --architecture hybrid --api-url http://localhost:5001
-```
-
-### Cenários Disponíveis
-
-| Cenário | Volume | Taxa (logs/s) | Descrição |
-|---------|--------|---------------|-----------|
-| S1 | 10.000 | 100 | Baixo Volume + Baixa Taxa |
-| S2 | 10.000 | 1.000 | Baixo Volume + Média Taxa |
-| S3 | 10.000 | 10.000 | Baixo Volume + Alta Taxa |
-| S4 | 100.000 | 100 | Médio Volume + Baixa Taxa |
-| S5 | 100.000 | 1.000 | Médio Volume + Média Taxa |
-| S6 | 100.000 | 10.000 | Médio Volume + Alta Taxa |
-| S7 | 1.000.000 | 100 | Alto Volume + Baixa Taxa |
-| S8 | 1.000.000 | 1.000 | Alto Volume + Média Taxa |
-| S9 | 1.000.000 | 10.000 | Alto Volume + Alta Taxa |
-
-### Análise de Resultados
-
-```bash
-cd testing/src
-python analyze_results.py
-```
-
-Os resultados serão salvos em:
-- `testing/src/results/` (JSON e CSV)
-- `testing/results/` (relatórios consolidados)
-
-## API REST (Go)
-
-### Documentação Swagger
-
-Após iniciar a API, acesse a documentação interativa:
-
-**http://localhost:5001/swagger/index.html**
-
-### Endpoints Principais
-
-#### Logs
-- `POST /api/v1/logs` - Criar novo log
-- `POST /api/v1/logs/batch` - Criar múltiplos logs
-- `GET /api/v1/logs/:id` - Buscar log específico
-- `GET /api/v1/logs` - Listar logs com filtros (source, severity, timestamp)
-
-#### Merkle Tree & Blockchain
-- `POST /api/v1/merkle/batch` - Criar batch com Merkle Tree
-- `GET /api/v1/merkle/batch/:id` - Consultar batch
-- `POST /api/v1/merkle/verify` - Verificar integridade via Merkle proof
-- `POST /api/v1/blockchain/submit` - Submeter hash para blockchain
-
-#### Sistema
-- `GET /api/v1/health` - Health check
-- `GET /api/v1/metrics` - Métricas Prometheus
-
-### Exemplo de Uso
-
-```bash
-# Criar log
-curl -X POST http://localhost:5001/api/v1/logs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "timestamp": "2025-11-16T10:30:00Z",
-    "source": "auth-service",
-    "severity": "INFO",
-    "message": "User login successful",
-    "metadata": {
-      "userId": "12345",
-      "ip": "192.168.1.100"
-    }
-  }'
-
-# Listar logs com filtro
-curl "http://localhost:5001/api/v1/logs?source=auth-service&severity=ERROR&limit=10"
-
-# Verificar integridade Merkle
-curl -X POST http://localhost:5001/api/v1/merkle/verify \
-  -H "Content-Type: application/json" \
-  -d '{
-    "batchId": "batch-123",
-    "logId": "log-456"
-  }'
-```
-
-## Estrutura do Projeto
-
-```
-tcc-log-management/
-├── hybrid-architecture/        # Arquitetura híbrida
-│   ├── chaincode/             # Smart contract Fabric (Go)
-│   │   └── logchaincode.go
-│   └── fabric-network/        # Configurações da rede
-│       ├── configtx.yaml
-│       ├── docker-compose.yml
-│       └── scripts/
-├── traditional-architecture/   # Arquitetura PostgreSQL
-│   ├── docker-compose.yml
-│   └── scripts/               # Scripts SQL
-├── testing/                   # Framework de testes
-│   ├── go-api/                # API REST em Go
-│   │   ├── cmd/api/           # Entrypoint da aplicação
-│   │   ├── internal/          # Lógica de negócio
-│   │   │   ├── handlers/      # HTTP handlers
-│   │   │   ├── services/      # Serviços de log
-│   │   │   ├── database/      # Clients MongoDB/PostgreSQL
-│   │   │   ├── fabric/        # Integração Fabric SDK
-│   │   │   ├── merkle/        # Merkle Tree
-│   │   │   ├── wal/           # Write-Ahead Log
-│   │   │   ├── models/        # Modelos de dados
-│   │   │   ├── middleware/    # Middlewares HTTP
-│   │   │   └── cache/         # Implementação Redis
-│   │   ├── docs/              # Swagger docs
-│   │   ├── Dockerfile
-│   │   ├── Makefile
-│   │   └── config.yaml
-│   ├── src/                   # Scripts Python (análise)
-│   │   ├── analyze_results.py
-│   │   └── performance_tester.py
-│   ├── scripts/               # Scripts auxiliares
-│   ├── results/               # Resultados dos testes
-│   └── config.py              # Configurações Python
-└── tcc/                       # Documentação LaTeX (TCC)
-    └── *.tex
-```
-
-## Otimizações Implementadas
-
-### API Go (Ambas Arquiteturas)
-- **Concorrência nativa:** Goroutines para processamento paralelo
-- **Performance:** Compilação nativa, baixo consumo de CPU (0.4-30%)
-- **Connection pooling:** MongoDB (max 100 conexões), PostgreSQL (max 20)
-- **Framework Gin v1.9.1:** Router de alta performance
-- **Drivers nativos:** pgx (PostgreSQL), mongo-driver (MongoDB)
-
-### Arquitetura Híbrida
-- **Write-Ahead Log (WAL):** Garantia de 0% de perda de dados
-  - Syscalls `Write` + `Sync` para fsync atômico
-  - Durabilidade antes de qualquer processamento
-- **Merkle Tree:** Batching automático de 50 logs
-- **Fabric SDK Go:** Integração nativa com Hyperledger Fabric
-- **Índices MongoDB:** Compostos em timestamp, source, severity
-- **Throughput:** Até 585 logs/s (cenário 1M logs)
-- **Latência P50:** 3.62-246ms (varia com volume)
-
-### Arquitetura Tradicional
-- **Replicação streaming:** Síncrona para alta consistência
-- **Connection pooling:** Otimizado para concorrência Go
-- **Índices PostgreSQL:** B-tree em colunas críticas
-- **Prepared statements:** Queries pré-compiladas
-- **Throughput:** Até 977 logs/s (cenário 1M logs)
-- **Latência P50:** 1.34-4.49ms
-- **Trade-off:** 38.17% perda de dados em falha primária (sem WAL)
-
-## Testes de Tolerância a Falhas
-
-```bash
-cd testing
-./run_fault_tolerance.sh
-```
-
-Cenários testados:
-- **Falha primário PostgreSQL:** 38.17% perda de dados (sem WAL)
-- **Falha rede Fabric:** 0% perda de dados (WAL protege)
-- **Falha MongoDB:** 0% perda de dados (WAL + replicação)
-- **Recuperação:** Tempo de failover < 10s
-
-### Resultados Comparativos
-
-| Métrica | PostgreSQL | Híbrida (MongoDB + Fabric) |
-|---------|------------|----------------------------|
-| **Throughput máx** | 977 logs/s | 585 logs/s |
-| **Latência P50** | 1.34-4.49ms | 3.62-246ms |
-| **CPU médio** | 0.4-0.83% | 0.57-30.37% |
-| **RAM médio** | 122-138 MB | 77-121 MB |
-| **Perda de dados** | 38.17% | 0% |
-| **Imutabilidade** | ❌ | ✅ (blockchain) |
-
-## Tecnologias Utilizadas
-
-### Backend
-- **Go 1.18:** Linguagem principal da API
-- **Gin Framework v1.9.1:** Router HTTP de alta performance
-- **fabric-sdk-go v1.0.0:** SDK oficial Hyperledger Fabric
-- **pgx v5.4:** Driver PostgreSQL nativo
-- **mongo-driver v1.13.4:** Driver MongoDB oficial
-- **gopsutil v3.23:** Monitoramento de recursos
-
-### Blockchain & Databases
-- **Hyperledger Fabric v2.4:** Blockchain permissionada
-- **MongoDB v7.0:** Banco NoSQL para logs
-- **PostgreSQL v15:** Banco relacional tradicional
-- **CouchDB:** State database do Fabric
-
-### DevOps & Análise
-- **Docker 24.x:** Containerização
-- **Python 3.10:** Scripts de análise
-- **Pandas v2.0:** Processamento de dados
-- **Matplotlib v3.7:** Visualização de gráficos
 
 ## Licença
 
-Este projeto está licenciado sob a Licença Apache 2.0 - veja o arquivo [LICENSE](LICENSE) para detalhes.
+Apache 2.0 — ver [LICENSE](LICENSE).

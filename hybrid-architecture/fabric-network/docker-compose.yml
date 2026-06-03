@@ -216,16 +216,6 @@ services:
       - peer1.org1.example.com
       - couchdb2
 
-  mongo:
-    image: mongo:7.0
-    container_name: mongo
-    ports:
-      - "27017:27017"
-    networks:
-      - log-net
-    volumes:
-      - mongo-data:/data/db
-
   cli:
     image: hyperledger/fabric-tools:2.4
     container_name: cli
@@ -258,6 +248,3 @@ services:
       - peer0.org1.example.com
       - peer1.org1.example.com
       - peer2.org1.example.com
-
-volumes:
-  mongo-data:
