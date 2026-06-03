@@ -1,7 +1,9 @@
 # Multi-stage Dockerfile for Go Log Management API
 
 # Stage 1: Build
-FROM golang:1.21-alpine AS builder
+# Mirrors the host toolchain (Go 1.18). All dependencies are pinned to
+# go-1.18-compatible versions, so newer toolchains are not required.
+FROM golang:1.18-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make ca-certificates tzdata
