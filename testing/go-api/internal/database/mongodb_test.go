@@ -97,7 +97,7 @@ func TestCollectionsOperations(t *testing.T) {
 		Metadata: map[string]interface{}{
 			"test": "data",
 		},
-		CreatedAt: time.Now().Format(time.RFC3339),
+		CreatedAt: models.FlexTime{Time: time.Now()},
 	}
 	log.Hash = log.CalculateHash()
 
@@ -127,7 +127,7 @@ func TestCollectionsOperations(t *testing.T) {
 	syncControl := &models.SyncControl{
 		LogID:      log.ID,
 		SyncStatus: models.SyncStatusPending,
-		CreatedAt:  time.Now().Format(time.RFC3339),
+		CreatedAt:  time.Now(),
 	}
 
 	if err := collections.InsertSyncControl(ctx, syncControl); err != nil {

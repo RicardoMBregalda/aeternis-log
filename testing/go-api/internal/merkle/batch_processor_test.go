@@ -139,7 +139,7 @@ func TestMerkleTreeCalculation(t *testing.T) {
 			Level:     models.LogLevelInfo,
 			Message:   "Test log 1",
 			Source:    "test",
-			CreatedAt: now,
+			CreatedAt: models.FlexTime{Time: now},
 		},
 		{
 			ID:        uuid.New().String(),
@@ -147,7 +147,7 @@ func TestMerkleTreeCalculation(t *testing.T) {
 			Level:     models.LogLevelInfo,
 			Message:   "Test log 2",
 			Source:    "test",
-			CreatedAt: now,
+			CreatedAt: models.FlexTime{Time: now},
 		},
 	}
 
@@ -181,7 +181,7 @@ func BenchmarkBatchProcessing(b *testing.B) {
 			Level:     models.LogLevelInfo,
 			Message:   "Benchmark log",
 			Source:    "benchmark",
-			CreatedAt: now,
+			CreatedAt: models.FlexTime{Time: now},
 		}
 	}
 

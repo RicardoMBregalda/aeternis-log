@@ -9,6 +9,7 @@ import (
 
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/cache"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/database"
+	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/logger"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/wal"
 	"github.com/gin-gonic/gin"
@@ -44,6 +45,8 @@ func NewLogHandler(collections *database.Collections, cache *cache.RedisCache, w
 // @Failure 500 {object} models.ErrorResponse
 // @Router /logs [post]
 func (h *LogHandler) CreateLog(c *gin.Context) {
+	log := logger.WithRequestID(c.GetString("request_id"))
+
 	var req models.CreateLogRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -55,13 +58,9 @@ func (h *LogHandler) CreateLog(c *gin.Context) {
 		return
 	}
 
-	// Debug: log incoming request
-	fmt.Printf("DEBUG CreateLog - req.ID='%s' (len=%d)\n", req.ID, len(req.ID))
-
 	// Generate ID if not provided
 	if req.ID == "" {
 		req.ID = uuid.New().String()
-		fmt.Printf("DEBUG Generated ID: %s\n", req.ID)
 	}
 
 	// Set timestamp if not provided
@@ -70,7 +69,7 @@ func (h *LogHandler) CreateLog(c *gin.Context) {
 	}
 
 	// Create log from request
-	log := &models.Log{
+	logEntry := &models.Log{
 		ID:         req.ID,
 		Timestamp:  req.Timestamp,
 		Source:     req.Source,
@@ -82,10 +81,10 @@ func (h *LogHandler) CreateLog(c *gin.Context) {
 	}
 
 	// Calculate hash
-	log.Hash = log.CalculateHash()
+	logEntry.Hash = logEntry.CalculateHash()
 
 	// Validate log
-	if err := log.Validate(); err != nil {
+	if err := logEntry.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "validation_failed",
 			Message: err.Error(),
@@ -99,7 +98,7 @@ func (h *LogHandler) CreateLog(c *gin.Context) {
 
 	// Write to WAL first (zero data loss guarantee)
 	if h.wal != nil {
-		if err := h.wal.Write(log); err != nil {
+		if err := h.wal.Write(logEntry); err != nil {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 				Error:   "wal_error",
 				Message: "Failed to write to WAL",
@@ -110,35 +109,35 @@ func (h *LogHandler) CreateLog(c *gin.Context) {
 	}
 
 	// Insert into database
-	if err := h.collections.InsertLog(ctx, log); err != nil {
-		// Log detailed error for debugging
-		fmt.Printf("ERROR InsertLog: %v (type: %T)\n", err, err)
+	if err := h.collections.InsertLog(ctx, logEntry); err != nil {
+		log.Error().Err(err).Str("log_id", logEntry.ID).Msg("failed to insert log")
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "database_error",
-			Message: fmt.Sprintf("Failed to create log: %v", err),
+			Message: "Failed to create log",
 			Code:    http.StatusInternalServerError,
 		})
 		return
 	}
 
 	// Create sync control
-	syncControl := models.NewSyncControl(log.ID, models.SyncStatusPendingBatch)
+	syncControl := models.NewSyncControl(logEntry.ID, models.SyncStatusPendingBatch)
 	if err := h.collections.InsertSyncControl(ctx, syncControl); err != nil {
-		// Log error but don't fail the request
-		fmt.Printf("Warning: Failed to create sync control: %v\n", err)
+		// Log error but don't fail the request: the WAL/batch processor will
+		// reconcile sync state, so a missing control record is non-fatal.
+		log.Warn().Err(err).Str("log_id", logEntry.ID).Msg("failed to create sync control")
 	}
 
 	// Invalidate cache
 	if h.cache.Enabled {
-		h.cache.InvalidateLogCache(ctx, log.Source)
+		h.cache.InvalidateLogCache(ctx, logEntry.Source)
 	}
 
 	c.JSON(http.StatusCreated, models.SuccessResponse{
 		Status:  "success",
 		Message: "Log created successfully",
 		Data: gin.H{
-			"id":   log.ID,
-			"hash": log.Hash,
+			"id":   logEntry.ID,
+			"hash": logEntry.Hash,
 		},
 	})
 }

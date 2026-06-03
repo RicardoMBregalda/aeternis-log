@@ -8,6 +8,7 @@ import (
 
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
 	"github.com/go-redis/redis/v8"
+	zlog "github.com/rs/zerolog/log"
 )
 
 // RedisCache wraps the Redis client with caching operations
@@ -45,14 +46,14 @@ func NewRedisClient(cfg *config.RedisConfig) (*RedisCache, error) {
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		// Graceful degradation - cache unavailable but don't fail
-		fmt.Printf("⚠️  Redis unavailable (cache disabled): %v\n", err)
+		zlog.Warn().Err(err).Msg("Redis unavailable, cache disabled")
 		return &RedisCache{
 			Enabled: false,
 			Config:  cfg,
 		}, nil
 	}
 
-	fmt.Println("✅ Redis cache connected")
+	zlog.Info().Msg("Redis cache connected")
 
 	return &RedisCache{
 		Client:  client,
@@ -156,7 +157,7 @@ func (rc *RedisCache) DeletePattern(ctx context.Context, pattern string) error {
 	}
 
 	if deletedCount > 0 {
-		fmt.Printf("🗑️  Cache invalidated: %d keys matching '%s'\n", deletedCount, pattern)
+		zlog.Debug().Int("keys", deletedCount).Str("pattern", pattern).Msg("cache invalidated")
 	}
 
 	return nil
