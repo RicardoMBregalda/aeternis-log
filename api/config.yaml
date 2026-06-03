@@ -1,0 +1,71 @@
+# Configuration file for Log Management API (Go version)
+
+server:
+  host: "0.0.0.0"
+  port: 5001
+  debug: false
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 10s
+
+mongodb:
+  url: "mongodb://localhost:27017"
+  database: "logdb"
+  collection: "logs"
+  sync_control_collection: "sync_control"
+  min_pool_size: 10
+  max_pool_size: 100
+  max_idle_time_ms: 300000
+  server_selection_timeout_ms: 5000
+  connect_timeout: 10s
+  socket_timeout: 30s
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 50
+  min_idle_conns: 10
+  max_retries: 3
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+  cache_ttl: 600  # 10 minutes
+  cache_enabled: true
+
+fabric:
+  api_url: "http://localhost:4000"
+  channel: "logchannel"
+  chaincode: "logchaincode"
+  sync_enabled: true
+  sync_max_workers: 10
+  invoke_timeout: 30s
+  query_timeout: 10s
+
+wal:
+  enabled: true
+  directory: "/var/log/tcc-wal"
+  check_interval: 5s
+  max_file_size_mb: 100
+  rotation_enabled: true
+  retention_days: 7
+
+batching:
+  enabled: true
+  auto_batch_size: 100
+  auto_batch_interval: 30s
+  batch_executor_workers: 5
+  verification_enabled: true
+
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json"  # json or console
+  output: "stdout"  # stdout or file path
+  enable_caller: true
+  enable_stacktrace: false
+
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"

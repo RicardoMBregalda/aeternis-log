@@ -1,35 +1,35 @@
-# Arquivos de sistema operacional
+# OS files
 .DS_Store
 Thumbs.db
 
-# Arquivos gerados pelo Hyperledger Fabric
+# Go build artifacts
+/api/api
+/api/bin/
+/api/log-api
+*.test
+*.out
+
+# Go vendor
+vendor/
+**/vendor/
+
+# Hyperledger Fabric generated artifacts (crypto material, channel blocks)
 hybrid-architecture/fabric-network/crypto-config/
 hybrid-architecture/fabric-network/config/
 hybrid-architecture/fabric-network/bin/
+hybrid-architecture/fabric-network/channel-artifacts/
 *.tar.gz
 *.block
 *.tx
 
-# Arquivos temporários do Python
-__pycache__/
-*.pyc
-venv/
-*.env
-
-# Logs e arquivos de saída
+# Logs
 *.log
-# Vendor do Go (dependências externas)
-vendor/
-**/vendor/
 
-testing/src/results
-testing/results
+# Environment files (keep the *.env.example templates)
+.env
+*.env
+!*.env.example
 
-#tcc
-TCC
-TCC/*
-*.tex
-
-#resultados
-testing\go-api\tests\performance\results_go
-testing\go-api\tests\performance\results_go/*
+# Editors / IDEs
+.idea/
+.vscode/
