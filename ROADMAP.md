@@ -1,5 +1,33 @@
 # Roadmap: Do TCC ao Produto
 
+## Painel de Progresso
+
+> Atualizado em **2026-06-03**. Status **verificado contra o código** (não apenas marcação manual de checkbox).
+> **Legenda:** ✅ concluído · 🟡 parcial · ⬜ pendente
+
+| Fase | Concluído | Progresso |
+|------|-----------|-----------|
+| Fase 1 — Estabilização Técnica | 1 ✅ + 1 🟡 de 8 | `▓▒░░░░░░` |
+| Fase 2 — Generalização do Domínio | 0 de 7 | `░░░░░░░` |
+| Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
+| Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
+
+### ✅ Concluído (verificado)
+- **Logging estruturado (`zerolog`)** _(Fase 1)_ — pacote `internal/logger` (`internal/logger/logger.go`); todos os `fmt.Printf("DEBUG ...")` removidos do código de produção; `middleware.RequestLogger` registrado em `cmd/api/main.go:163`. O único `fmt.Printf` restante é o banner de boot (`cmd/api/main.go:283`), legítimo. _(ver Changelog)_
+
+### 🟡 Parcial / em andamento
+- **Rate limiting** _(Fase 1)_ — a implementação **já existe**: `middleware.RateLimiter(maxRequests, window)` (`internal/middleware/middleware.go:55`, in-memory). Falta **conectar nas rotas** (`cmd/api/main.go` ainda não faz `router.Use(middleware.RateLimiter(...))`) e expor configuração por env. _(corrige o texto antigo "falta implementação")_
+
+### ⬜ Pendências prioritárias (próximo bloco da Fase 1)
+- **Autenticação JWT / API keys** — não existe nenhum middleware de auth hoje.
+- **Fabric via SDK** — ainda usa `docker exec` + container `peer0.org1.example.com` hardcoded (`internal/fabric/client.go:50,64,99,212`).
+- **Paginação por cursor** — ainda offset + `SetSkip` (`internal/handlers/logs.go:162,202`).
+- **`DeleteLog` real** — hoje é no-op: retorna `200` sem deletar (`internal/handlers/logs.go:306`).
+- **WAL distribuído** — ainda arquivo local com `O_SYNC` + `Flock` (`internal/wal/wal.go:142,150`).
+- **Env vars para configs hardcoded** — nomes de container/paths ainda no código.
+
+---
+
 ## Análise da Implementação
 
 ### O que foi construído
@@ -24,7 +52,7 @@ Esse padrão — chamado de *Tamper-Evident Data Anchoring* — não é específ
 | Fabric client usa `docker exec` em vez do SDK | Quebrável, não escalável, acoplamento ao runtime Docker | `fabric/client.go:64` |
 | Sem autenticação/autorização na API | Qualquer requisição é aceita | `handlers/logs.go` |
 | WAL é arquivo local | Impede escala horizontal da API | `wal/wal.go` |
-| `fmt.Printf("DEBUG ...")` em handlers | Não pode ir para produção | `handlers/logs.go:59` |
+| ~~`fmt.Printf("DEBUG ...")` em handlers~~ ✅ **resolvido** | Substituído por logging estruturado (`zerolog`) | `internal/logger/` |
 | Container names hardcoded (`peer0.org1.example.com`) | Frágil para qualquer deploy real | `fabric/client.go:50` |
 | `DeleteLog` é no-op silencioso | Retorna 200 sem deletar nada | `handlers/logs.go:338` |
 | Rede Fabric de dev (1 org, 1 peer, 1 orderer) | Sem tolerância a falhas na blockchain | `fabric-network/` |
@@ -65,7 +93,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 
 ## Roadmap de Produto
 
-### Fase 1 — Estabilização Técnica (2-3 meses)
+### Fase 1 — Estabilização Técnica (2-3 meses) — `1 ✅ + 1 🟡 de 8`
 
 **Objetivo:** Tornar o código executável em ambiente real, não só em dev.
 
@@ -76,9 +104,9 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [ ] Substituir paginação por offset por cursor (campo `created_at` + ID como cursor)
 - [ ] Implementar `DeleteLog` real com soft delete (campo `deleted_at`, não remove da blockchain)
 - [ ] Variáveis de ambiente para todas as configurações hardcoded (container names, paths)
-- [ ] Adicionar rate limiting no middleware (já existe o pacote, falta implementação)
+- [~] **Rate limiting** 🟡 — implementação já existe (`middleware.RateLimiter`, in-memory); falta conectar nas rotas (`router.Use(...)` em `cmd/api/main.go`) e expor config por env
 
-### Fase 2 — Generalização do Domínio (2-3 meses)
+### Fase 2 — Generalização do Domínio (2-3 meses) — `0 de 7 (não iniciada)`
 
 **Objetivo:** Remover o acoplamento ao domínio de "logs" para suportar qualquer tipo de registro auditável.
 
@@ -90,7 +118,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [ ] Webhook/callback quando um batch é ancorado na blockchain (para integrações externas)
 - [ ] SDK cliente em Go com suporte a retry automático e verificação de integridade local
 
-### Fase 3 — Experiência do Desenvolvedor (2-3 meses)
+### Fase 3 — Experiência do Desenvolvedor (2-3 meses) — `0 de 6 (não iniciada)`
 
 **Objetivo:** Reduzir o tempo de integração de semanas para horas.
 
@@ -101,7 +129,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [ ] Documentação com guias por vertical: "Como usar para auditoria LGPD", "Como usar para supply chain"
 - [ ] Sandbox público com rede Fabric de teste para desenvolvedores avaliarem
 
-### Fase 4 — Observabilidade e SLAs (1-2 meses)
+### Fase 4 — Observabilidade e SLAs (1-2 meses) — `0 de 6 (não iniciada)`
 
 **Objetivo:** Suportar clientes em produção com garantias concretas.
 
