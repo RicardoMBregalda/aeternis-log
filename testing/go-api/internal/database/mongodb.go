@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
+	zlog "github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -206,8 +207,12 @@ func ConnectWithRetry(cfg *config.MongoDBConfig, maxRetries int) (*MongoClient, 
 			waitTime = 30 * time.Second
 		}
 
-		fmt.Printf("MongoDB connection attempt %d/%d failed: %v. Retrying in %v...\n", 
-			i+1, maxRetries, err, waitTime)
+		zlog.Warn().
+			Err(err).
+			Int("attempt", i+1).
+			Int("max_retries", maxRetries).
+			Dur("retry_in", waitTime).
+			Msg("MongoDB connection failed, retrying")
 		time.Sleep(waitTime)
 	}
 

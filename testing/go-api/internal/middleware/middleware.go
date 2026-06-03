@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/logger"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"github.com/gin-gonic/gin"
 )
@@ -159,37 +160,37 @@ func ValidateContentType() gin.HandlerFunc {
 	}
 }
 
-// Logger is a custom logger middleware
-func Logger() gin.HandlerFunc {
+// RequestLogger logs every HTTP request as a structured event, enriched with
+// the request ID set by RequestID. It must run after RequestID.
+func RequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
 		raw := c.Request.URL.RawQuery
 
-		// Process request
 		c.Next()
 
-		// Calculate latency
-		latency := time.Since(start)
-
-		// Get status code
-		statusCode := c.Writer.Status()
-
-		// Get request ID
-		requestID := c.GetString("request_id")
-
-		// Build query string
 		if raw != "" {
 			path = path + "?" + raw
 		}
 
-		// Log format: [RequestID] Method Path Status Latency
-		fmt.Printf("[%s] %s %s %d %s\n",
-			requestID,
-			c.Request.Method,
-			path,
-			statusCode,
-			latency,
-		)
+		log := logger.WithRequestID(c.GetString("request_id"))
+		evt := log.Info()
+		status := c.Writer.Status()
+		switch {
+		case status >= 500:
+			evt = log.Error()
+		case status >= 400:
+			evt = log.Warn()
+		}
+
+		evt.
+			Str("method", c.Request.Method).
+			Str("path", path).
+			Int("status", status).
+			Dur("latency", time.Since(start)).
+			Str("client_ip", c.ClientIP()).
+			Int("bytes", c.Writer.Size()).
+			Msg("http request")
 	}
 }

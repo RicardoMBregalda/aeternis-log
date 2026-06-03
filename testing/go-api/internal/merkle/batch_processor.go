@@ -11,6 +11,7 @@ import (
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
 	"github.com/google/uuid"
+	zlog "github.com/rs/zerolog/log"
 )
 
 // BatchProcessor handles automatic batching and Merkle tree generation
@@ -134,7 +135,7 @@ func (bp *BatchProcessor) worker(ctx context.Context, workerID int) {
 		case job := <-bp.jobQueue:
 			if err := bp.processBatch(job.Context, job.BatchSize); err != nil {
 				bp.incrementError()
-				fmt.Printf("Worker %d: batch processing error: %v\n", workerID, err)
+				zlog.Error().Err(err).Int("worker", workerID).Msg("batch processing error")
 			}
 		}
 	}
@@ -245,8 +246,12 @@ func (bp *BatchProcessor) processBatch(ctx context.Context, batchSize int) error
 	// Update statistics
 	bp.updateStats(batchID, len(logs), startTime)
 
-	fmt.Printf("✅ Batch %s created: %d logs, Merkle root: %s (took %v)\n", 
-		batchID, len(logs), merkleRoot[:16]+"...", time.Since(startTime))
+	zlog.Info().
+		Str("batch_id", batchID).
+		Int("logs", len(logs)).
+		Str("merkle_root", merkleRoot).
+		Dur("took", time.Since(startTime)).
+		Msg("batch created")
 
 	return nil
 }

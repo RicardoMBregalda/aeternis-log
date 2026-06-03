@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,16 +13,18 @@ import (
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/database"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/fabric"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/handlers"
+	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/logger"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/merkle"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/middleware"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/wal"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
-	
+
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	
+
 	_ "github.com/RicardoMBregalda/tcc-log-management/go-api/docs" // swagger docs
 )
 
@@ -54,61 +55,74 @@ var (
 // @name Authorization
 
 func main() {
-	// Print banner
 	printBanner()
 
-	// TODO: Initialize logger (zap or logrus)
-	log.Println("🔧 Initializing logger...")
+	// Bootstrap logger writes to stderr until the configured logger is ready,
+	// so failures during configuration loading are never silent.
+	boot := zerolog.New(os.Stderr).With().Timestamp().Logger()
 
-	// Load configuration
-	log.Println("📝 Loading configuration...")
 	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
-		log.Fatalf("❌ Failed to load configuration: %v", err)
+		boot.Fatal().Err(err).Msg("failed to load configuration")
 	}
 
-	// Connect to MongoDB with retry
-	log.Println("🗄️  Connecting to MongoDB...")
+	lg, logCloser, err := logger.Init(logger.Config{
+		Level:        cfg.Logging.Level,
+		Format:       cfg.Logging.Format,
+		Output:       cfg.Logging.Output,
+		EnableCaller: cfg.Logging.EnableCaller,
+	})
+	if err != nil {
+		boot.Fatal().Err(err).Msg("failed to initialize logger")
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+	lg.Info().
+		Str("version", Version).
+		Str("build_time", BuildTime).
+		Str("log_level", cfg.Logging.Level).
+		Str("log_format", cfg.Logging.Format).
+		Msg("configuration loaded, logger initialized")
+
+	// MongoDB ------------------------------------------------------------
 	mongoClient, err := database.ConnectWithRetry(&cfg.MongoDB, 5)
 	if err != nil {
-		log.Fatalf("❌ Failed to connect to MongoDB: %v", err)
+		lg.Fatal().Err(err).Msg("failed to connect to MongoDB")
 	}
 	defer mongoClient.Close(context.Background())
-	log.Println("✅ MongoDB connected")
+	lg.Info().Str("database", cfg.MongoDB.Database).Msg("MongoDB connected")
 
-	// Initialize collections
 	collections := database.NewCollections(mongoClient)
 
-	// Connect to Redis
-	log.Println("💾 Connecting to Redis...")
+	// Redis (optional, graceful degradation) -----------------------------
 	redisCache, err := cache.NewRedisClient(&cfg.Redis)
 	if err != nil {
-		log.Printf("⚠️  Warning: Failed to create Redis client: %v", err)
+		lg.Warn().Err(err).Msg("failed to create Redis client, continuing without cache")
+		redisCache = &cache.RedisCache{Enabled: false, Config: &cfg.Redis}
 	} else if redisCache.Enabled {
 		defer redisCache.Close()
-		log.Println("✅ Redis cache connected")
+		lg.Info().Msg("Redis cache connected")
 	} else {
-		log.Println("⚠️  Redis cache disabled (graceful degradation)")
+		lg.Warn().Msg("Redis cache disabled (graceful degradation)")
 	}
 
-	// Initialize WAL
-	log.Println("🔒 Initializing Write-Ahead Log...")
-	insertCallback := func(log *models.Log) error {
+	// Write-Ahead Log ----------------------------------------------------
+	insertCallback := func(logEntry *models.Log) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return collections.InsertLog(ctx, log)
+		return collections.InsertLog(ctx, logEntry)
 	}
-	
+
 	walInstance, err := wal.NewWriteAheadLog(cfg.WAL.Directory, cfg.WAL.CheckInterval)
 	if err != nil {
-		log.Printf("⚠️  Warning: Failed to create WAL: %v", err)
-		// Create dummy WAL
+		lg.Warn().Err(err).Msg("failed to create WAL, durability guarantees disabled")
 		walInstance = &wal.WriteAheadLog{}
 	} else if cfg.WAL.Enabled {
 		walInstance.StartProcessor(insertCallback)
-		log.Println("✅ WAL processor started")
+		lg.Info().Str("directory", cfg.WAL.Directory).Msg("WAL processor started")
 	} else {
-		log.Println("⚠️  WAL disabled")
+		lg.Warn().Msg("WAL disabled")
 	}
 	defer func() {
 		if cfg.WAL.Enabled && walInstance != nil {
@@ -116,117 +130,91 @@ func main() {
 		}
 	}()
 
-	// Initialize Fabric client
-	log.Println("🔗 Initializing Fabric client...")
+	// Fabric -------------------------------------------------------------
 	fabricClient := fabric.NewFabricClient(&cfg.Fabric)
 	if cfg.Fabric.SyncEnabled {
-		log.Println("✅ Fabric client initialized")
+		lg.Info().Str("channel", cfg.Fabric.Channel).Msg("Fabric client initialized")
 	} else {
-		log.Println("⚠️  Fabric sync disabled")
+		lg.Warn().Msg("Fabric sync disabled")
 	}
 
-	// Initialize Merkle Batch Processor
-	log.Println("🌳 Initializing Merkle Tree Batch Processor...")
+	// Merkle batch processor ---------------------------------------------
 	batchProcessor := merkle.NewBatchProcessor(collections, fabricClient, &cfg.Batching)
-	
-	ctx := context.Background()
-	if err := batchProcessor.Start(ctx); err != nil {
-		log.Fatalf("❌ Failed to start batch processor: %v", err)
+	if err := batchProcessor.Start(context.Background()); err != nil {
+		lg.Fatal().Err(err).Msg("failed to start batch processor")
 	}
 	defer func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		batchProcessor.Stop(stopCtx)
+		if err := batchProcessor.Stop(stopCtx); err != nil {
+			lg.Error().Err(err).Msg("error stopping batch processor")
+		}
 	}()
-	log.Printf("✅ Batch processor started with %d workers\n", cfg.Batching.BatchExecutorWorkers)
+	lg.Info().Int("workers", cfg.Batching.BatchExecutorWorkers).Msg("batch processor started")
 
-	// Setup Gin router
-	if !cfg.Server.Debug {
+	// HTTP router --------------------------------------------------------
+	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.New()
-
-	// Middlewares
-	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
-	router.Use(middleware.CORS())
 	router.Use(middleware.RequestID())
+	router.Use(middleware.RequestLogger())
+	router.Use(middleware.CORS())
 	router.Use(middleware.SecurityHeaders())
 
-	// Create app dependencies
-	deps := NewAppDependencies(cfg, mongoClient, collections, redisCache, fabricClient, batchProcessor)
-
-	// Create handlers
 	healthHandler := handlers.NewHealthHandler(mongoClient, collections, redisCache, fabricClient, batchProcessor, Version, BuildTime)
 	logHandler := handlers.NewLogHandler(collections, redisCache, walInstance)
 	merkleHandler := handlers.NewMerkleHandler(batchProcessor, redisCache)
 	walHandler := handlers.NewWALHandler(walInstance)
 	statsHandler := handlers.NewStatsHandler(collections, mongoClient, redisCache, fabricClient, batchProcessor, walInstance)
 
-	// Register routes
-	registerRoutes(router, deps, healthHandler, logHandler, merkleHandler, walHandler, statsHandler)
-
-	// TODO: Register Swagger docs
-
-	// Setup server
-	port := os.Getenv("SERVER_PORT")
-	if port == "" {
-		port = "5001"
-	}
+	registerRoutes(router, healthHandler, logHandler, merkleHandler, walHandler, statsHandler)
 
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%s", port),
+		Addr:         cfg.GetServerAddr(),
 		Handler:      router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Start server in goroutine
 	go func() {
-		log.Printf("🚀 Starting server on port %s...\n", port)
-		log.Printf("📖 API Documentation: http://localhost:%s/swagger/index.html\n", port)
-		log.Printf("🏥 Health Check: http://localhost:%s/health\n", port)
-
+		lg.Info().
+			Str("addr", srv.Addr).
+			Str("docs", fmt.Sprintf("http://%s/swagger/index.html", srv.Addr)).
+			Msg("HTTP server starting")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("❌ Failed to start server: %v\n", err)
+			lg.Fatal().Err(err).Msg("failed to start server")
 		}
 	}()
 
-	// Wait for interrupt signal for graceful shutdown
+	// Graceful shutdown --------------------------------------------------
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	sig := <-quit
+	lg.Info().Str("signal", sig.String()).Msg("shutdown signal received")
 
-	log.Println("🛑 Shutting down server...")
-
-	// Graceful shutdown with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Stop accepting new requests first; the deferred stops above then drain
+	// the batch processor, WAL, Redis and MongoDB in reverse order.
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
-
-	// TODO: Stop WAL processor
-	// TODO: Close MongoDB connection
-	// TODO: Close Redis connection
-
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("❌ Server forced to shutdown:", err)
+		lg.Error().Err(err).Msg("server forced to shutdown")
 	}
-
-	log.Println("✅ Server exited gracefully")
+	lg.Info().Msg("server exited gracefully")
 }
 
-// registerRoutes registers all API routes
+// registerRoutes registers all API routes.
 func registerRoutes(
-	router *gin.Engine, 
-	deps *AppDependencies,
+	router *gin.Engine,
 	healthHandler *handlers.HealthHandler,
 	logHandler *handlers.LogHandler,
 	merkleHandler *handlers.MerkleHandler,
 	walHandler *handlers.WALHandler,
 	statsHandler *handlers.StatsHandler,
 ) {
-	// Root redirect
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"name":    "Go Log Management API",
@@ -235,22 +223,15 @@ func registerRoutes(
 		})
 	})
 
-	// Health endpoint
 	router.GET("/health", healthHandler.HealthCheck)
 
-	// API v1 group
 	v1 := router.Group("/api/v1")
 	{
-		// TODO: Register handlers
 		v1.GET("/ping", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"message": "pong",
-				"version": Version,
-			})
+			c.JSON(http.StatusOK, gin.H{"message": "pong", "version": Version})
 		})
 	}
 
-	// Logs endpoints
 	logs := router.Group("/logs")
 	{
 		logs.POST("", logHandler.CreateLog)
@@ -259,18 +240,16 @@ func registerRoutes(
 		logs.DELETE("/:id", logHandler.DeleteLog)
 	}
 
-	// Merkle endpoints
-	merkle := router.Group("/merkle")
+	merkleGroup := router.Group("/merkle")
 	{
-		merkle.POST("/batch", merkleHandler.CreateBatch)
-		merkle.GET("/batch/:id", merkleHandler.GetBatch)
-		merkle.POST("/verify/:id", merkleHandler.VerifyBatch)
-		merkle.GET("/batches", merkleHandler.ListBatches)
-		merkle.GET("/stats", merkleHandler.GetBatchStats)
-		merkle.POST("/force-batch", merkleHandler.ForceBatch)
+		merkleGroup.POST("/batch", merkleHandler.CreateBatch)
+		merkleGroup.GET("/batch/:id", merkleHandler.GetBatch)
+		merkleGroup.POST("/verify/:id", merkleHandler.VerifyBatch)
+		merkleGroup.GET("/batches", merkleHandler.ListBatches)
+		merkleGroup.GET("/stats", merkleHandler.GetBatchStats)
+		merkleGroup.POST("/force-batch", merkleHandler.ForceBatch)
 	}
 
-	// WAL endpoints
 	walGroup := router.Group("/wal")
 	{
 		walGroup.GET("/stats", walHandler.GetStats)
@@ -278,7 +257,6 @@ func registerRoutes(
 		walGroup.GET("/health", walHandler.GetHealth)
 	}
 
-	// Stats endpoints
 	stats := router.Group("/stats")
 	{
 		stats.GET("", statsHandler.GetStats)
@@ -286,122 +264,10 @@ func registerRoutes(
 		stats.GET("/sync", statsHandler.GetSyncStats)
 	}
 
-	// Swagger documentation
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
-// Legacy handlers - keeping for backward compatibility
-// makeHealthHandler creates a health check handler with dependencies (deprecated)
-// @Summary Health check
-// @Description Check if the API is running and healthy
-// @Tags Health
-// @Produce json
-// @Success 200 {object} map[string]interface{}
-// @Router /health [get]
-func makeHealthHandler(deps *AppDependencies) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
-		defer cancel()
-
-		status := "healthy"
-		services := gin.H{}
-
-		// Check MongoDB
-		mongoStatus := "healthy"
-		if err := deps.MongoClient.HealthCheck(ctx); err != nil {
-			mongoStatus = "unhealthy"
-			status = "degraded"
-		}
-		services["mongodb"] = mongoStatus
-
-		// Check Redis
-		redisStatus := "disabled"
-		if deps.RedisCache.Enabled {
-			if err := deps.RedisCache.HealthCheck(ctx); err != nil {
-				redisStatus = "unhealthy"
-				status = "degraded"
-			} else {
-				redisStatus = "healthy"
-			}
-		}
-		services["redis"] = redisStatus
-
-		// Check Fabric
-		fabricStatus := "disabled"
-		if deps.Config.Fabric.SyncEnabled {
-			if err := deps.FabricClient.HealthCheck(ctx); err != nil {
-				fabricStatus = "unhealthy"
-				status = "degraded"
-			} else {
-				fabricStatus = "healthy"
-			}
-		}
-		services["fabric"] = fabricStatus
-
-		// Check Batch Processor
-		batchStatus := "stopped"
-		if deps.BatchProcessor.IsRunning() {
-			batchStatus = "running"
-		}
-		services["batch_processor"] = batchStatus
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":     status,
-			"version":    Version,
-			"build_time": BuildTime,
-			"timestamp":  time.Now().UTC().Format(time.RFC3339),
-			"services":   services,
-		})
-	}
-}
-
-// makeStatsHandler creates a stats handler with dependencies
-func makeStatsHandler(deps *AppDependencies) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-		defer cancel()
-
-		stats := gin.H{
-			"timestamp": time.Now().UTC().Format(time.RFC3339),
-		}
-
-		// MongoDB stats
-		if mongoStats, err := deps.MongoClient.GetStats(ctx); err == nil {
-			stats["mongodb"] = mongoStats
-		}
-
-		// Redis stats
-		if deps.RedisCache.Enabled {
-			if redisStats, err := deps.RedisCache.GetStats(ctx); err == nil {
-				stats["redis"] = redisStats
-			}
-		}
-
-		// Fabric stats
-		if deps.Config.Fabric.SyncEnabled {
-			stats["fabric"] = deps.FabricClient.GetStats()
-		}
-
-		// Batch processor stats
-		stats["batch_processor"] = deps.BatchProcessor.GetStats()
-
-		// Sync stats
-		if syncStats, err := deps.Collections.AggregateSyncStats(ctx); err == nil {
-			stats["sync"] = syncStats
-		}
-
-		// Total logs count
-		if totalLogs, err := deps.Collections.CountLogs(ctx, map[string]interface{}{}); err == nil {
-			stats["total_logs"] = totalLogs
-		}
-
-		c.JSON(http.StatusOK, stats)
-	}
-}
-
-
-
-// printBanner prints the application banner
+// printBanner prints the application banner.
 func printBanner() {
 	banner := `
 ╔═══════════════════════════════════════════════════════════════╗
