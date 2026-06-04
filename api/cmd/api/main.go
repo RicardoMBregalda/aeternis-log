@@ -270,15 +270,12 @@ func registerRoutes(
 // printBanner prints the application banner.
 func printBanner() {
 	banner := `
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║    🚀 Go Log Management API                                   ║
-║    Version: %-10s                                       ║
-║    Build: %-15s                                       ║
-║                                                               ║
-║    ⚡ High-Performance • 🔒 Zero Data Loss • 🌳 Merkle Tree  ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
+==============================================================
+  Log Management API
+  Version: %-10s
+  Build:   %-15s
+  Tamper-evident log anchoring with Merkle Tree + WAL
+==============================================================
 `
 	fmt.Printf(banner, Version, BuildTime)
 }

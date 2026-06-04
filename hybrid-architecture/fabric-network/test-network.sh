@@ -23,21 +23,21 @@ print_header() {
 }
 
 print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}[OK] $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}❌ $1${NC}"
+    echo -e "${RED}[ERROR] $1${NC}"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+    echo -e "${BLUE}[INFO] $1${NC}"
 }
 
 # ============================================
 # TESTS
 # ============================================
-print_header "🧪 FABRIC NETWORK TESTS"
+print_header "Fabric network tests"
 
 # Test 1: CLI container responding
 print_info "Test 1: Checking the CLI container..."
@@ -124,7 +124,7 @@ QUERY_RESULT=$(docker exec cli bash -c "
 if echo "$QUERY_RESULT" | grep -q "$LOG_ID"; then
     print_success "Read transaction executed successfully"
     echo ""
-    echo "📄 Query result:"
+    echo "Query result:"
     echo "$QUERY_RESULT" | jq '.' 2>/dev/null || echo "$QUERY_RESULT"
 else
     print_error "Read transaction failed"
@@ -135,19 +135,19 @@ fi
 # ============================================
 # SUMMARY
 # ============================================
-print_header "✅ ALL TESTS PASSED!"
+print_header "All tests passed"
 
-echo "Network Statistics:"
+echo "Network statistics:"
 echo ""
-echo "📊 Containers:"
-docker-compose ps --format "table {{.Name}}\t{{.Status}}" | grep "Up" | wc -l | xargs echo "  • Running:"
+echo "Containers:"
+docker-compose ps --format "table {{.Name}}\t{{.Status}}" | grep "Up" | wc -l | xargs echo "  - Running:"
 echo ""
-echo "🔗 Channel:"
-echo "  • Name: logchannel"
-docker exec cli peer channel getinfo -c logchannel 2>/dev/null | grep "Blockchain info:" | sed 's/^/  • /'
+echo "Channel:"
+echo "  - Name: logchannel"
+docker exec cli peer channel getinfo -c logchannel 2>/dev/null | grep "Blockchain info:" | sed 's/^/  - /'
 echo ""
-echo "📦 Chaincode:"
-docker exec cli peer lifecycle chaincode querycommitted -C logchannel 2>/dev/null | grep "Name:" | sed 's/^/  • /'
+echo "Chaincode:"
+docker exec cli peer lifecycle chaincode querycommitted -C logchannel 2>/dev/null | grep "Name:" | sed 's/^/  - /'
 echo ""
 
-print_info "The Hyperledger Fabric network is fully operational! 🚀"
+print_info "The Hyperledger Fabric network is fully operational"

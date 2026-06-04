@@ -4,7 +4,7 @@
 set -e
 
 echo "=========================================="
-echo "🧪 TESTING LOGCHAINCODE"
+echo "Testing logchaincode"
 echo "=========================================="
 
 cd /opt/gopath/src/github.com/hyperledger/fabric/peer
@@ -21,7 +21,7 @@ CHANNEL_NAME="logchannel"
 CHAINCODE_NAME="logchaincode"
 
 echo ""
-echo "📝 Test 1: Create a test log..."
+echo "Test 1: Create a test log..."
 peer chaincode invoke \
   -C $CHANNEL_NAME \
   -n $CHAINCODE_NAME \
@@ -30,11 +30,11 @@ peer chaincode invoke \
   --cafile $ORDERER_CA
 
 echo ""
-echo "⏳ Waiting for the transaction to be processed..."
+echo "Waiting for the transaction to be processed..."
 sleep 3
 
 echo ""
-echo "📖 Test 2: Query the created log..."
+echo "Test 2: Query the created log..."
 peer chaincode query \
   -C $CHANNEL_NAME \
   -n $CHAINCODE_NAME \
@@ -42,5 +42,5 @@ peer chaincode query \
 
 echo ""
 echo "=========================================="
-echo "✅ TESTS COMPLETE!"
+echo "Tests complete"
 echo "=========================================="
