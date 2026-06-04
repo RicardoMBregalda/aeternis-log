@@ -1,83 +1,83 @@
 # Log Management — Tamper-Evident Log Anchoring
 
-API de gerenciamento de logs com **prova criptográfica de integridade**. Os logs vão para o MongoDB (rápido, consultável), são agrupados em **Merkle Trees**, e a raiz de cada lote é ancorada no **Hyperledger Fabric** (imutável, auditável). Um **Write-Ahead Log (WAL)** com `fsync` garante zero perda de dados antes de qualquer processamento.
+Log management API with **cryptographic proof of integrity**. Logs go to MongoDB (fast, queryable), are grouped into **Merkle Trees**, and the root of each batch is anchored on **Hyperledger Fabric** (immutable, auditable). A **Write-Ahead Log (WAL)** with `fsync` guarantees zero data loss before any processing.
 
-Qualquer adulteração é detectável matematicamente: um auditor recalcula o Merkle Root a partir do MongoDB e compara com o que está na blockchain.
+Any tampering is mathematically detectable: an auditor recomputes the Merkle Root from MongoDB and compares it against what is stored on the blockchain.
 
-> **Vertical de produto:** Compliance & Audit Trail. Direção e plano em [ROADMAP.md](ROADMAP.md).
+> **Product vertical:** Compliance & Audit Trail. Direction and plan in [ROADMAP.md](ROADMAP.md).
 
-## Arquitetura
+## Architecture
 
 ```
-POST /logs ──► WAL (fsync) ──► MongoDB ──► batch (Merkle root) ──► âncora no Fabric
+POST /logs ──► WAL (fsync) ──► MongoDB ──► batch (Merkle root) ──► anchor on Fabric
 ```
 
-| Componente | Papel |
+| Component | Role |
 |---|---|
-| **API Go** (`api/`) | REST (Gin), logging estruturado (zerolog), WAL, batching por Merkle Tree |
-| **MongoDB** | Armazenamento off-chain dos logs (camada quente) |
-| **Redis** | Cache opcional (degradação graciosa se ausente) |
-| **Hyperledger Fabric** (`hybrid-architecture/`) | Blockchain permissionada (consenso Raft) que guarda as raízes de Merkle; chaincode em Go |
-| **WAL** | Durabilidade (0% de perda) com `O_SYNC` + `fsync` |
+| **Go API** (`api/`) | REST (Gin), structured logging (zerolog), WAL, Merkle Tree batching |
+| **MongoDB** | Off-chain storage for logs (hot tier) |
+| **Redis** | Optional cache (graceful degradation if absent) |
+| **Hyperledger Fabric** (`hybrid-architecture/`) | Permissioned blockchain (Raft consensus) that stores the Merkle roots; chaincode in Go |
+| **WAL** | Durability (0% loss) with `O_SYNC` + `fsync` |
 
-## Pré-requisitos
+## Prerequisites
 
 - Docker + Docker Compose
-- Go 1.18+ (para build/test nativo)
+- Go 1.18+ (for native build/test)
 - `make`
 
-## Início rápido
+## Quick start
 
 ```bash
-make up        # sobe TUDO: blockchain (Fabric) + API + MongoDB + Redis
-make down      # para tudo
-make help      # lista todos os comandos
+make up        # brings up EVERYTHING: blockchain (Fabric) + API + MongoDB + Redis
+make down      # stops everything
+make help      # lists all commands
 ```
 
-Para desenvolvimento sem a blockchain:
+For development without the blockchain:
 
 ```bash
-make dev       # sobe só MongoDB + Redis
-make run       # roda a API nativamente (Go)
-# ou
-make api       # sobe a API em container (sem o Fabric)
+make dev       # brings up only MongoDB + Redis
+make run       # runs the API natively (Go)
+# or
+make api       # runs the API in a container (without Fabric)
 ```
 
-A API sobe em **http://localhost:5001** — Swagger em `/swagger/index.html`, health em `/health`.
+The API comes up at **http://localhost:5001** — Swagger at `/swagger/index.html`, health at `/health`.
 
-> A rede Fabric e a API compartilham a rede Docker `tcc_log_network`, criada automaticamente pelo `make`. Era a ausência dela que antes fazia o `docker compose up` não criar nada.
+> The Fabric network and the API share the Docker network `tcc_log_network`, created automatically by `make`. Its absence was previously what made `docker compose up` create nothing.
 
-## Estrutura do projeto
+## Project structure
 
 ```
 .
-├── api/                      # API Go (o produto)
+├── api/                      # Go API (the product)
 │   ├── cmd/api/              # entrypoint
 │   ├── internal/             # handlers, database, fabric, merkle, wal, logger, ...
-│   ├── pkg/config/           # configuração
+│   ├── pkg/config/           # configuration
 │   ├── Dockerfile
 │   └── docker-compose.yml    # API + MongoDB + Redis
 ├── hybrid-architecture/
 │   ├── chaincode/            # smart contract (Go)
-│   └── fabric-network/       # rede Fabric (peers, orderer, CA, scripts)
-├── Makefile                  # orquestração (make up / down / dev / ...)
+│   └── fabric-network/       # Fabric network (peers, orderer, CA, scripts)
+├── Makefile                  # orchestration (make up / down / dev / ...)
 ├── ROADMAP.md
 └── README.md
 ```
 
-## API — principais endpoints
+## API — main endpoints
 
-| Método | Rota | Descrição |
+| Method | Route | Description |
 |---|---|---|
-| `POST` | `/logs` | Cria um log (hash automático + WAL) |
-| `GET` | `/logs` | Lista com filtros (`source`, `level`, `limit`, `offset`) |
-| `GET` | `/logs/:id` | Busca por ID |
-| `POST` | `/merkle/force-batch` | Força a criação de um lote |
-| `POST` | `/merkle/verify/:id` | Verifica a integridade de um lote (Merkle proof) |
-| `GET` | `/merkle/batches` | Lista lotes |
-| `GET` | `/health` · `/stats` | Saúde e estatísticas |
+| `POST` | `/logs` | Create a log (automatic hash + WAL) |
+| `GET` | `/logs` | List with filters (`source`, `level`, `limit`, `offset`) |
+| `GET` | `/logs/:id` | Fetch by ID |
+| `POST` | `/merkle/force-batch` | Force batch creation |
+| `POST` | `/merkle/verify/:id` | Verify the integrity of a batch (Merkle proof) |
+| `GET` | `/merkle/batches` | List batches |
+| `GET` | `/health` · `/stats` | Health and statistics |
 
-Exemplo:
+Example:
 
 ```bash
 curl -X POST http://localhost:5001/logs \
@@ -85,18 +85,18 @@ curl -X POST http://localhost:5001/logs \
   -d '{"source": "auth-service", "level": "INFO", "message": "User login successful"}'
 ```
 
-## Configuração
+## Configuration
 
-A API lê `api/config.yaml` e aceita override por variáveis de ambiente (ver `api/.env.example`). Seções: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`.
+The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`.
 
-## Desenvolvimento
+## Development
 
 ```bash
-make build     # compila a API
+make build     # compiles the API
 make test      # go test ./...
 make vet       # go vet ./...
 ```
 
-## Licença
+## License
 
-Apache 2.0 — ver [LICENSE](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE).
