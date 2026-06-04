@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -240,6 +242,120 @@ func TestSoftDeleteLog(t *testing.T) {
 	}
 	if err := collections.SoftDeleteLog(ctx, "does-not-exist"); !errors.Is(err, mongo.ErrNoDocuments) {
 		t.Errorf("missing log: expected ErrNoDocuments, got %v", err)
+	}
+}
+
+// TestKeysetPagination walks the (created_at desc, id desc) keyset filter used
+// by cursor pagination and verifies every log is returned exactly once, in
+// order, with no overlap across pages — including ties on the same millisecond.
+func TestKeysetPagination(t *testing.T) {
+	cfg := &config.MongoDBConfig{
+		URL:                      "mongodb://localhost:27017",
+		Database:                 "logdb_test",
+		Collection:               "logs_test",
+		SyncControlCollection:    "sync_control_test",
+		MinPoolSize:              5,
+		MaxPoolSize:              10,
+		MaxIdleTimeMS:            60000,
+		ServerSelectionTimeoutMS: 5000,
+		ConnectTimeout:           10 * time.Second,
+		SocketTimeout:            30 * time.Second,
+	}
+
+	client, err := NewMongoClient(cfg)
+	if err != nil {
+		t.Skipf("MongoDB not available: %v", err)
+		return
+	}
+	defer client.Close(context.Background())
+
+	collections := NewCollections(client)
+	ctx := context.Background()
+	client.Database.Collection(cfg.Collection).Drop(ctx)
+
+	const total = 10
+	base := time.Now().UTC().Truncate(time.Millisecond)
+	for i := 0; i < total; i++ {
+		ts := base.Add(time.Duration(i) * time.Millisecond)
+		if i == 4 {
+			ts = base.Add(3 * time.Millisecond) // share a millisecond with i==3
+		}
+		log := &models.Log{
+			ID:        fmt.Sprintf("log-%02d-%s", i, uuid.New().String()),
+			Timestamp: ts.Format(time.RFC3339),
+			Level:     models.LogLevelInfo,
+			Message:   "x",
+			Source:    "keyset",
+			CreatedAt: models.FlexTime{Time: ts},
+		}
+		log.Hash = log.CalculateHash()
+		if err := collections.InsertLog(ctx, log); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	baseFilter := bson.M{"deleted_at": bson.M{"$exists": false}, "source": "keyset"}
+	sort := bson.D{{Key: "created_at", Value: -1}, {Key: "id", Value: -1}}
+	const limit = int64(3)
+
+	seen := make(map[string]bool)
+	var paged []string
+	var lastMs int64
+	var lastID string
+	first := true
+
+	for {
+		filter := bson.M{}
+		for k, v := range baseFilter {
+			filter[k] = v
+		}
+		if !first {
+			boundary := primitive.NewDateTimeFromTime(time.UnixMilli(lastMs).UTC())
+			filter["$or"] = bson.A{
+				bson.M{"created_at": bson.M{"$lt": boundary}},
+				bson.M{"created_at": boundary, "id": bson.M{"$lt": lastID}},
+			}
+		}
+
+		page, err := collections.FindLogs(ctx, filter, NewFindOptions().SetSort(sort).SetLimit(limit))
+		if err != nil {
+			t.Fatalf("page query: %v", err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		for _, l := range page {
+			if seen[l.ID] {
+				t.Errorf("duplicate id across pages: %s", l.ID)
+			}
+			seen[l.ID] = true
+			paged = append(paged, l.ID)
+		}
+		last := page[len(page)-1]
+		lastMs = last.CreatedAt.UnixMilli()
+		lastID = last.ID
+		first = false
+		if len(page) < int(limit) {
+			break
+		}
+	}
+
+	if len(seen) != total {
+		t.Errorf("expected %d unique logs across pages, got %d", total, len(seen))
+	}
+
+	// Paged order must match a single sorted query over the whole set.
+	all, err := collections.FindLogs(ctx, baseFilter, NewFindOptions().SetSort(sort))
+	if err != nil {
+		t.Fatalf("sorted query: %v", err)
+	}
+	if len(all) != len(paged) {
+		t.Fatalf("sorted=%d paged=%d", len(all), len(paged))
+	}
+	for i := range all {
+		if all[i].ID != paged[i] {
+			t.Errorf("order mismatch at %d: paged=%s sorted=%s", i, paged[i], all[i].ID)
+		}
 	}
 }
 

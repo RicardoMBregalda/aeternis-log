@@ -43,4 +43,7 @@ type ListLogsResponse struct {
 	Total  int    `json:"total"`
 	Limit  int    `json:"limit"`
 	Offset int    `json:"offset"`
+	// NextCursor is an opaque cursor for keyset pagination; present only when a
+	// further page may exist. Pass it back as the `cursor` query parameter.
+	NextCursor string `json:"next_cursor,omitempty"`
 }

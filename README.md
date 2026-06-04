@@ -70,7 +70,7 @@ The API comes up at **http://localhost:5001** — Swagger at `/swagger/index.htm
 | Method | Route | Description |
 |---|---|---|
 | `POST` | `/logs` | Create a log (automatic hash + WAL) |
-| `GET` | `/logs` | List with filters (`source`, `level`, `limit`, `offset`) |
+| `GET` | `/logs` | List with filters (`source`, `level`, `limit`) and pagination — `offset` or keyset `cursor` (response returns `next_cursor`) |
 | `GET` | `/logs/:id` | Fetch by ID |
 | `POST` | `/merkle/force-batch` | Force batch creation |
 | `POST` | `/merkle/verify/:id` | Verify the integrity of a batch (Merkle proof) |

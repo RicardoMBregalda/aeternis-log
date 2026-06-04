@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -153,6 +154,7 @@ func (h *LogHandler) CreateLog(c *gin.Context) {
 // @Param level query string false "Filter by level"
 // @Param limit query int false "Limit results" default(50)
 // @Param offset query int false "Offset for pagination" default(0)
+// @Param cursor query string false "Opaque keyset cursor; when set, overrides offset"
 // @Success 200 {object} models.ListLogsResponse
 // @Failure 500 {object} models.ErrorResponse
 // @Router /logs [get]
@@ -162,6 +164,7 @@ func (h *LogHandler) GetLogs(c *gin.Context) {
 	level := c.Query("level")
 	limitStr := c.DefaultQuery("limit", "50")
 	offsetStr := c.DefaultQuery("offset", "0")
+	cursorStr := c.Query("cursor")
 
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit <= 0 || limit > 1000 {
@@ -173,10 +176,12 @@ func (h *LogHandler) GetLogs(c *gin.Context) {
 		offset = 0
 	}
 
-	// Build cache key
+	// Cache key: cursor and offset pages key separately.
 	cacheKey := cache.BuildLogListKey(source, level, limit, offset)
+	if cursorStr != "" {
+		cacheKey = cache.BuildLogListCursorKey(source, level, limit, cursorStr)
+	}
 
-	// Try cache first
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
@@ -189,23 +194,47 @@ func (h *LogHandler) GetLogs(c *gin.Context) {
 		}
 	}
 
-	// Build filter (soft-deleted logs are hidden from listings)
-	filter := bson.M{"deleted_at": bson.M{"$exists": false}}
+	// Base filter (soft-deleted logs are hidden). Used for the total count
+	// regardless of pagination mode.
+	baseFilter := bson.M{"deleted_at": bson.M{"$exists": false}}
 	if source != "" {
-		filter["source"] = source
+		baseFilter["source"] = source
 	}
 	if level != "" {
-		filter["level"] = level
+		baseFilter["level"] = level
 	}
 
-	// Query options
+	// Query filter: in cursor mode, narrow to items strictly past the cursor
+	// position under the (created_at desc, id desc) order.
+	queryFilter := baseFilter
+	if cursorStr != "" {
+		cur, err := decodeCursor(cursorStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{
+				Error:   "invalid_cursor",
+				Message: "Invalid pagination cursor",
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+		boundary := primitive.NewDateTimeFromTime(time.UnixMilli(cur.TimeMillis).UTC())
+		queryFilter = cloneFilter(baseFilter)
+		queryFilter["$or"] = bson.A{
+			bson.M{"created_at": bson.M{"$lt": boundary}},
+			bson.M{"created_at": boundary, "id": bson.M{"$lt": cur.ID}},
+		}
+	}
+
+	// Sort by (created_at desc, id desc) for a stable keyset order. Offset mode
+	// keeps SetSkip; cursor mode relies on the range filter instead.
 	findOptions := database.NewFindOptions().
 		SetLimit(int64(limit)).
-		SetSkip(int64(offset)).
-		SetSort(bson.D{{Key: "created_at", Value: -1}})
+		SetSort(bson.D{{Key: "created_at", Value: -1}, {Key: "id", Value: -1}})
+	if cursorStr == "" {
+		findOptions.SetSkip(int64(offset))
+	}
 
-	// Find logs
-	logs, err := h.collections.FindLogs(ctx, filter, findOptions)
+	logs, err := h.collections.FindLogs(ctx, queryFilter, findOptions)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "database_error",
@@ -215,8 +244,7 @@ func (h *LogHandler) GetLogs(c *gin.Context) {
 		return
 	}
 
-	// Count total
-	total, err := h.collections.CountLogs(ctx, filter)
+	total, err := h.collections.CountLogs(ctx, baseFilter)
 	if err != nil {
 		total = int64(len(logs))
 	}
@@ -227,14 +255,28 @@ func (h *LogHandler) GetLogs(c *gin.Context) {
 		Limit:  limit,
 		Offset: offset,
 	}
+	// A full page implies there may be more; expose the next cursor.
+	if len(logs) == limit {
+		last := logs[len(logs)-1]
+		response.NextCursor = encodeCursor(last.CreatedAt.Time, last.ID)
+	}
 
-	// Cache response
 	if h.cache.Enabled {
 		h.cache.SetJSON(ctx, cacheKey, response, 10*time.Minute)
 	}
 
 	c.Header("X-Cache", "MISS")
 	c.JSON(http.StatusOK, response)
+}
+
+// cloneFilter returns a shallow copy of a bson.M filter so cursor predicates can
+// be added without mutating the base filter used for the total count.
+func cloneFilter(m bson.M) bson.M {
+	out := make(bson.M, len(m)+1)
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // GetLogByID handles GET /logs/:id
