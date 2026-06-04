@@ -21,11 +21,11 @@ import (
 type LogHandler struct {
 	collections *database.Collections
 	cache       *cache.RedisCache
-	wal         *wal.WriteAheadLog
+	wal         wal.WAL
 }
 
 // NewLogHandler creates a new log handler
-func NewLogHandler(collections *database.Collections, cache *cache.RedisCache, wal *wal.WriteAheadLog) *LogHandler {
+func NewLogHandler(collections *database.Collections, cache *cache.RedisCache, wal wal.WAL) *LogHandler {
 	return &LogHandler{
 		collections: collections,
 		cache:       cache,

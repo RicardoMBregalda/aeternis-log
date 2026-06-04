@@ -10,11 +10,11 @@ import (
 
 // WALHandler handles WAL-related HTTP requests
 type WALHandler struct {
-	wal *wal.WriteAheadLog
+	wal wal.WAL
 }
 
 // NewWALHandler creates a new WAL handler
-func NewWALHandler(wal *wal.WriteAheadLog) *WALHandler {
+func NewWALHandler(wal wal.WAL) *WALHandler {
 	return &WALHandler{
 		wal: wal,
 	}

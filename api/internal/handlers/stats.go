@@ -21,7 +21,7 @@ type StatsHandler struct {
 	cache          *cache.RedisCache
 	fabricClient   *fabric.FabricClient
 	batchProcessor *merkle.BatchProcessor
-	wal            *wal.WriteAheadLog
+	wal            wal.WAL
 }
 
 // NewStatsHandler creates a new stats handler
@@ -31,7 +31,7 @@ func NewStatsHandler(
 	cache *cache.RedisCache,
 	fabricClient *fabric.FabricClient,
 	batchProcessor *merkle.BatchProcessor,
-	wal *wal.WriteAheadLog,
+	wal wal.WAL,
 ) *StatsHandler {
 	return &StatsHandler{
 		collections:    collections,

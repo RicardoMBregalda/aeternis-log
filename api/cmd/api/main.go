@@ -114,21 +114,21 @@ func main() {
 		return collections.InsertLog(ctx, logEntry)
 	}
 
-	walInstance, err := wal.NewWriteAheadLog(cfg.WAL.Directory, cfg.WAL.CheckInterval)
+	walInstance, err := wal.New(&cfg.WAL, redisCache.Client)
 	if err != nil {
 		lg.Warn().Err(err).Msg("failed to create WAL, durability guarantees disabled")
-		walInstance = &wal.WriteAheadLog{}
-	} else if cfg.WAL.Enabled {
+		walInstance = wal.NoopWAL{}
+	}
+	if cfg.WAL.Enabled {
 		walInstance.StartProcessor(insertCallback)
-		lg.Info().Str("directory", cfg.WAL.Directory).Msg("WAL processor started")
+		lg.Info().
+			Str("backend", cfg.WAL.Backend).
+			Str("directory", cfg.WAL.Directory).
+			Msg("WAL processor started")
 	} else {
 		lg.Warn().Msg("WAL disabled")
 	}
-	defer func() {
-		if cfg.WAL.Enabled && walInstance != nil {
-			walInstance.StopProcessor()
-		}
-	}()
+	defer walInstance.StopProcessor()
 
 	// Fabric -------------------------------------------------------------
 	fabricClient := fabric.NewFabricClient(&cfg.Fabric)

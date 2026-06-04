@@ -7,13 +7,14 @@
 
 | Fase | Concluído | Progresso |
 |------|-----------|-----------|
-| Fase 1 — Estabilização Técnica | 1 ✅ + 1 🟡 de 8 | `▓▒░░░░░░` |
+| Fase 1 — Estabilização Técnica | 2 ✅ + 1 🟡 de 8 | `▓▓▒░░░░░` |
 | Fase 2 — Generalização do Domínio | 0 de 7 | `░░░░░░░` |
 | Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
 | Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
 
 ### ✅ Concluído (verificado)
-- **Logging estruturado (`zerolog`)** _(Fase 1)_ — pacote `internal/logger` (`internal/logger/logger.go`); todos os `fmt.Printf("DEBUG ...")` removidos do código de produção; `middleware.RequestLogger` registrado em `cmd/api/main.go:163`. O único `fmt.Printf` restante é o banner de boot (`cmd/api/main.go:283`), legítimo. _(ver Changelog)_
+- **Logging estruturado (`zerolog`)** _(Fase 1)_ — pacote `internal/logger` (`internal/logger/logger.go`); todos os `fmt.Printf("DEBUG ...")` removidos do código de produção; `middleware.RequestLogger` registrado em `cmd/api/main.go`. _(ver Changelog)_
+- **WAL distribuído (Redis Streams)** _(Fase 1)_ — interface `wal.WAL` com backends `file` (default) e `redis` (`internal/wal/redis_wal.go`, consumer group + `XAUTOCLAIM`). Opt-in via `wal.backend: redis`; permite múltiplas instâncias da API sem perder a garantia de recuperação. Testes e2e validados contra Redis real. _(ver Changelog)_
 
 ### 🟡 Parcial / em andamento
 - **Rate limiting** _(Fase 1)_ — a implementação **já existe**: `middleware.RateLimiter(maxRequests, window)` (`internal/middleware/middleware.go:55`, in-memory). Falta **conectar nas rotas** (`cmd/api/main.go` ainda não faz `router.Use(middleware.RateLimiter(...))`) e expor configuração por env. _(corrige o texto antigo "falta implementação")_
@@ -23,7 +24,6 @@
 - **Fabric via SDK** — ainda usa `docker exec` + container `peer0.org1.example.com` hardcoded (`internal/fabric/client.go:50,64,99,212`).
 - **Paginação por cursor** — ainda offset + `SetSkip` (`internal/handlers/logs.go:162,202`).
 - **`DeleteLog` real** — hoje é no-op: retorna `200` sem deletar (`internal/handlers/logs.go:306`).
-- **WAL distribuído** — ainda arquivo local com `O_SYNC` + `Flock` (`internal/wal/wal.go:142,150`).
 - **Env vars para configs hardcoded** — nomes de container/paths ainda no código.
 
 ---
@@ -51,7 +51,7 @@ Esse padrão — chamado de *Tamper-Evident Data Anchoring* — não é específ
 |----------|---------|---------|
 | Fabric client usa `docker exec` em vez do SDK | Quebrável, não escalável, acoplamento ao runtime Docker | `fabric/client.go:64` |
 | Sem autenticação/autorização na API | Qualquer requisição é aceita | `handlers/logs.go` |
-| WAL é arquivo local | Impede escala horizontal da API | `wal/wal.go` |
+| ~~WAL é arquivo local~~ ✅ **resolvido** | Backend Redis Streams opt-in (`wal.backend: redis`) permite múltiplas instâncias | `internal/wal/redis_wal.go` |
 | ~~`fmt.Printf("DEBUG ...")` em handlers~~ ✅ **resolvido** | Substituído por logging estruturado (`zerolog`) | `internal/logger/` |
 | Container names hardcoded (`peer0.org1.example.com`) | Frágil para qualquer deploy real | `fabric/client.go:50` |
 | `DeleteLog` é no-op silencioso | Retorna 200 sem deletar nada | `handlers/logs.go:338` |
@@ -93,14 +93,14 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 
 ## Roadmap de Produto
 
-### Fase 1 — Estabilização Técnica (2-3 meses) — `1 ✅ + 1 🟡 de 8`
+### Fase 1 — Estabilização Técnica (2-3 meses) — `2 ✅ + 1 🟡 de 8`
 
 **Objetivo:** Tornar o código executável em ambiente real, não só em dev.
 
 - [ ] Substituir `docker exec` no `FabricClient` pela integração real com `fabric-sdk-go` (o SDK já está no `go.mod` mas não é usado)
 - [x] Remover todos os `fmt.Printf("DEBUG ...")` do código de produção — substituído por **structured logging com `zerolog`** (escolhido em vez de `slog` por compatibilidade com Go 1.18 e por ser zero-alocação no hot-path). Novo pacote `internal/logger`; logs em JSON com `request_id`, `service`, `caller`. _(ver changelog)_
 - [ ] Implementar autenticação: JWT para API keys de clientes, middleware em `internal/middleware/`
-- [ ] Mover WAL para solução distribuída (Redis Streams ou Kafka) para permitir múltiplas instâncias da API
+- [x] **WAL distribuído** — backend Redis Streams (consumer group) opt-in via `wal.backend: redis`; default continua `file`. Interface `wal.WAL` + `RedisWAL`/`WriteAheadLog`(file)/`NoopWAL`; recuperação de instância morta via `XAUTOCLAIM`. Redis em modo AOF (`appendfsync always`) para paridade de durabilidade. _(ver changelog)_
 - [ ] Substituir paginação por offset por cursor (campo `created_at` + ID como cursor)
 - [ ] Implementar `DeleteLog` real com soft delete (campo `deleted_at`, não remove da blockchain)
 - [ ] Variáveis de ambiente para todas as configurações hardcoded (container names, paths)
@@ -170,6 +170,27 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-03 — WAL distribuído (Redis Streams) + internacionalização
+
+Segunda leva (Fase 1). Item escolhido: **WAL distribuído**, para destravar múltiplas instâncias da API.
+
+**WAL distribuído**
+- Introduzida a interface `wal.WAL` (pacote `internal/wal`). O WAL de arquivo existente (`O_SYNC` + `fsync`) vira o backend `file` e a satisfaz sem mudança de comportamento.
+- Novo backend `RedisWAL` (`internal/wal/redis_wal.go`) sobre **Redis Streams + consumer group**: `XADD` no `Write`; processor com retry do próprio PEL (`XREADGROUP ... 0`), `XAUTOCLAIM` para reivindicar pendências de instâncias mortas, e `XREADGROUP ... >` bloqueante para entradas novas; `XACK` + `XDEL` após insert idempotente.
+- Factory `wal.New(cfg, redisClient)` seleciona o backend por `wal.backend` (`file` | `redis`). **Default `file`** — deploys atuais não mudam; `redis` é opt-in. Backend `redis` sem Redis = erro explícito (sem rebaixar a durabilidade em silêncio). `NoopWAL` cobre o caso desabilitado.
+- `cmd/api/main.go` e os handlers (`LogHandler`/`WALHandler`/`StatsHandler`) passam a usar a interface.
+- Config `wal.backend` + settings de stream (`stream_key`, `consumer_group`, `read_count`, `block_timeout`, `claim_min_idle`) com env overrides e validação.
+- **Durabilidade:** no modo `redis` depende da persistência do Redis. `docker-compose` do Redis ajustado para `--appendonly yes --appendfsync always` (paridade com o `fsync` do arquivo). Documentado em `config.yaml`/`.env.example`/README.
+- Testes: factory (sempre roda) + e2e e retry-on-failure (validados contra Redis real). Removido código morto `NewWriteAheadLogWithConfig`.
+
+**Internacionalização & saída formal (do TCC ao produto)**
+- Código, comentários do chaincode, scripts do Fabric, README e os dois Makefiles traduzidos para inglês (ROADMAP e changelog permanecem em PT como docs internas).
+- Saídas de console (scripts + Makefiles + banner de boot) formalizadas: emojis removidos, prefixos `[INFO]`/`[OK]`/`[WARNING]`/`[ERROR]`.
+
+`go build`, `go vet` e `go test ./...` limpos.
+
+**Próximos candidatos:** autenticação (JWT/API keys) + rate limiting real, paginação por cursor, `DeleteLog` com soft delete.
 
 ### 2026-06-03 — Fundação: logging estruturado + arquitetura
 
