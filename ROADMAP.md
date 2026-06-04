@@ -7,7 +7,7 @@
 
 | Fase | Concluído | Progresso |
 |------|-----------|-----------|
-| Fase 1 — Estabilização Técnica | 6 ✅ de 8 | `▓▓▓▓▓▓░░` |
+| Fase 1 — Estabilização Técnica | 7 ✅ de 8 | `▓▓▓▓▓▓▓░` |
 | Fase 2 — Generalização do Domínio | 0 de 7 | `░░░░░░░` |
 | Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
 | Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
@@ -19,10 +19,10 @@
 - **Rate limiting** _(Fase 1)_ — `middleware.RateLimiter` agora **conectado** via `rate_limit` config (opt-in, por IP). _(ver Changelog)_
 - **`DeleteLog` soft delete** _(Fase 1)_ — `DELETE /logs/:id` agora marca `deleted_at` (`collections.SoftDeleteLog`) em vez de no-op; documento e âncora na blockchain preservados; deletados escondidos das rotas de leitura. _(ver Changelog)_
 - **Paginação por cursor** _(Fase 1)_ — `GET /logs` aceita `cursor` (keyset por `created_at` + `id`) e retorna `next_cursor`; `offset` mantido (sem breaking change). Índice composto `(created_at, id)` adicionado. _(ver Changelog)_
+- **Env vars p/ configs hardcoded do Fabric** _(Fase 1)_ — `peer_container`, `orderer_address`, `orderer_tls_ca_file`, `tls_enabled` viraram config/env (`FABRIC_*`); `client.go` não tem mais nomes/paths fixos. _(ver Changelog)_
 
 ### ⬜ Pendências prioritárias (próximo bloco da Fase 1)
-- **Fabric via SDK** — ainda usa `docker exec` + container `peer0.org1.example.com` hardcoded (`internal/fabric/client.go:50,64,99,212`).
-- **Env vars para configs hardcoded** — nomes de container/paths ainda no código.
+- **Fabric via SDK** — ainda usa `docker exec` (último item da Fase 1). A reescrita troca o `docker exec` pelo SDK gRPC e remove o mount do `docker.sock` (`internal/fabric/client.go`).
 
 ---
 
@@ -51,7 +51,7 @@ Esse padrão — chamado de *Tamper-Evident Data Anchoring* — não é específ
 | ~~Sem autenticação/autorização na API~~ ✅ **resolvido** | Auth por API key (`middleware.APIKeyAuth`, opt-in) nas rotas de dados | `internal/middleware/middleware.go` |
 | ~~WAL é arquivo local~~ ✅ **resolvido** | Backend Redis Streams opt-in (`wal.backend: redis`) permite múltiplas instâncias | `internal/wal/redis_wal.go` |
 | ~~`fmt.Printf("DEBUG ...")` em handlers~~ ✅ **resolvido** | Substituído por logging estruturado (`zerolog`) | `internal/logger/` |
-| Container names hardcoded (`peer0.org1.example.com`) | Frágil para qualquer deploy real | `fabric/client.go:50` |
+| ~~Container names hardcoded (`peer0.org1.example.com`)~~ ✅ **resolvido** | Parametrizado por config/env (`FABRIC_PEER_CONTAINER` etc.) | `internal/fabric/client.go` |
 | ~~`DeleteLog` é no-op silencioso~~ ✅ **resolvido** | Soft delete real (`deleted_at`), preservando documento e âncora | `internal/handlers/logs.go` |
 | Rede Fabric de dev (1 org, 1 peer, 1 orderer) | Sem tolerância a falhas na blockchain | `fabric-network/` |
 | ~~Paginação por offset~~ ✅ **resolvido** | Cursor keyset (`created_at`+`id`) opcional, com índice composto; `offset` mantido | `internal/handlers/logs.go` |
@@ -91,7 +91,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 
 ## Roadmap de Produto
 
-### Fase 1 — Estabilização Técnica (2-3 meses) — `6 ✅ de 8`
+### Fase 1 — Estabilização Técnica (2-3 meses) — `7 ✅ de 8`
 
 **Objetivo:** Tornar o código executável em ambiente real, não só em dev.
 
@@ -101,7 +101,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **WAL distribuído** — backend Redis Streams (consumer group) opt-in via `wal.backend: redis`; default continua `file`. Interface `wal.WAL` + `RedisWAL`/`WriteAheadLog`(file)/`NoopWAL`; recuperação de instância morta via `XAUTOCLAIM`. Redis em modo AOF (`appendfsync always`) para paridade de durabilidade. _(ver changelog)_
 - [x] **Paginação por cursor** — `GET /logs?cursor=` (keyset por `created_at` desc + `id` desc; cursor opaco base64) retornando `next_cursor`; `offset` mantido (aditivo, sem breaking change). Índice composto `(created_at:-1, id:-1)`. Validado por `database.TestKeysetPagination` (sem overlap/lacuna, com empate no mesmo ms). _(ver changelog)_
 - [x] **`DeleteLog` soft delete** — `collections.SoftDeleteLog` marca `deleted_at` (via `$currentDate`); documento e âncora na blockchain preservados (não entra no `CalculateHash`). Deletados escondidos de `GET /logs` e `GET /logs/:id`; idempotente. _(ver changelog)_
-- [ ] Variáveis de ambiente para todas as configurações hardcoded (container names, paths)
+- [x] **Env vars para configs hardcoded do Fabric** — `peer_container`, `orderer_address`, `orderer_tls_ca_file`, `tls_enabled` na `FabricConfig` (env `FABRIC_*`), com validação. `client.go` constrói os args do `docker exec` a partir da config (`invokeArgs`/`queryArgs`, testáveis); zero nomes/paths fixos. _(ver changelog)_
 - [x] **Rate limiting** — `middleware.RateLimiter` conectado em `cmd/api/main.go` via config `rate_limit` (opt-in, por IP, com env overrides). _Nota:_ in-memory por instância; um limiter compartilhado em Redis é o follow-up para multi-instância. _(ver changelog)_
 
 ### Fase 2 — Generalização do Domínio (2-3 meses) — `0 de 7 (não iniciada)`
@@ -168,6 +168,15 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-04 — Env vars para os configs hardcoded do Fabric
+
+Sexta leva (Fase 1). Remove nomes de container e paths fixos do cliente Fabric.
+
+- `FabricConfig` ganhou `peer_container`, `orderer_address`, `orderer_tls_ca_file` e `tls_enabled` (env `FABRIC_PEER_CONTAINER`, `FABRIC_ORDERER_ADDRESS`, `FABRIC_ORDERER_TLS_CA_FILE`, `FABRIC_TLS_ENABLED`), com defaults iguais ao comportamento atual e validação (sync ligado exige `peer_container`; TLS ligado exige cafile).
+- `internal/fabric/client.go`: a construção do comando `docker exec` foi extraída para `invokeArgs`/`queryArgs`, montados a partir da config; `--tls`/`--cafile` só entram quando `tls_enabled`. `HealthCheck` e `GetStats` também usam `PeerContainer`. **Zero** `peer0.org1.example.com`/paths hardcoded.
+- Testes: `fabric.TestInvokeArgsFromConfig`/`TestInvokeArgsNoTLS`/`TestQueryArgsFromConfig` e `config.TestValidateFabric`. `go build`/`vet`/`test ./...` limpos.
+- _Obs.:_ ainda é `docker exec` por baixo — o último item da Fase 1 (Fabric via SDK) troca o transporte por gRPC e remove o mount do `docker.sock`. Este passo só desacopla os nomes/paths.
 
 ### 2026-06-03 — Paginação por cursor (keyset)
 

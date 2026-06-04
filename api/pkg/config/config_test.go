@@ -54,6 +54,26 @@ func TestValidateRateLimit(t *testing.T) {
 	}
 }
 
+func TestValidateFabric(t *testing.T) {
+	c, err := LoadConfig("")
+	if err != nil {
+		t.Fatalf("default config should be valid: %v", err)
+	}
+
+	c.Fabric.SyncEnabled = true
+	c.Fabric.PeerContainer = ""
+	if err := c.Validate(); err == nil {
+		t.Error("expected error when sync is enabled without peer_container")
+	}
+
+	c.Fabric.PeerContainer = "peer0"
+	c.Fabric.TLSEnabled = true
+	c.Fabric.OrdererTLSCAFile = ""
+	if err := c.Validate(); err == nil {
+		t.Error("expected error when tls is enabled without orderer_tls_ca_file")
+	}
+}
+
 func TestSplitAndTrim(t *testing.T) {
 	got := splitAndTrim(" a, b ,, c ", ",")
 	want := []string{"a", "b", "c"}

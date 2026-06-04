@@ -89,6 +89,14 @@ type FabricConfig struct {
 	SyncMaxWorkers int           `yaml:"sync_max_workers"`
 	InvokeTimeout  time.Duration `yaml:"invoke_timeout"`
 	QueryTimeout   time.Duration `yaml:"query_timeout"`
+
+	// Connection details for the docker-exec transport (used until the SDK
+	// integration replaces it). Parameterized so the API is not tied to the dev
+	// docker-compose container names and certificate paths.
+	PeerContainer    string `yaml:"peer_container"`
+	OrdererAddress   string `yaml:"orderer_address"`
+	OrdererTLSCAFile string `yaml:"orderer_tls_ca_file"`
+	TLSEnabled       bool   `yaml:"tls_enabled"`
 }
 
 // WALConfig holds Write-Ahead Log configuration
@@ -178,13 +186,17 @@ func LoadConfig(configPath string) (*Config, error) {
 			CacheEnabled: true,
 		},
 		Fabric: FabricConfig{
-			APIURL:         "http://localhost:4000",
-			Channel:        "logchannel",
-			Chaincode:      "logchaincode",
-			SyncEnabled:    true,
-			SyncMaxWorkers: 10,
-			InvokeTimeout:  30 * time.Second,
-			QueryTimeout:   10 * time.Second,
+			APIURL:           "http://localhost:4000",
+			Channel:          "logchannel",
+			Chaincode:        "logchaincode",
+			SyncEnabled:      true,
+			SyncMaxWorkers:   10,
+			InvokeTimeout:    30 * time.Second,
+			QueryTimeout:     10 * time.Second,
+			PeerContainer:    "peer0.org1.example.com",
+			OrdererAddress:   "orderer.example.com:7050",
+			OrdererTLSCAFile: "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem",
+			TLSEnabled:       true,
 		},
 		WAL: WALConfig{
 			Enabled:         true,
@@ -339,6 +351,18 @@ func overrideFromEnv(config *Config) {
 	if val := os.Getenv("FABRIC_SYNC_ENABLED"); val != "" {
 		config.Fabric.SyncEnabled = val == "true"
 	}
+	if val := os.Getenv("FABRIC_PEER_CONTAINER"); val != "" {
+		config.Fabric.PeerContainer = val
+	}
+	if val := os.Getenv("FABRIC_ORDERER_ADDRESS"); val != "" {
+		config.Fabric.OrdererAddress = val
+	}
+	if val := os.Getenv("FABRIC_ORDERER_TLS_CA_FILE"); val != "" {
+		config.Fabric.OrdererTLSCAFile = val
+	}
+	if val := os.Getenv("FABRIC_TLS_ENABLED"); val != "" {
+		config.Fabric.TLSEnabled = val == "true"
+	}
 
 	// WAL
 	if val := os.Getenv("WAL_ENABLED"); val != "" {
@@ -453,6 +477,14 @@ func (c *Config) Validate() error {
 	}
 	if c.Fabric.Chaincode == "" {
 		return fmt.Errorf("fabric chaincode is required")
+	}
+	if c.Fabric.SyncEnabled {
+		if c.Fabric.PeerContainer == "" {
+			return fmt.Errorf("fabric peer_container is required when sync is enabled")
+		}
+		if c.Fabric.TLSEnabled && c.Fabric.OrdererTLSCAFile == "" {
+			return fmt.Errorf("fabric orderer_tls_ca_file is required when tls is enabled")
+		}
 	}
 
 	// Validate WAL

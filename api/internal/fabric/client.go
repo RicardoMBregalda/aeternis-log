@@ -45,17 +45,7 @@ func (fc *FabricClient) InvokeChaincode(ctx context.Context, function string, ar
 	}
 
 	// Build peer chaincode invoke command
-	cmdArgs := []string{
-		"exec",
-		"peer0.org1.example.com", // Container name from docker-compose
-		"peer", "chaincode", "invoke",
-		"-o", "orderer.example.com:7050",
-		"-C", fc.Config.Channel,
-		"-n", fc.Config.Chaincode,
-		"--tls",
-		"--cafile", "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem",
-		"-c", fc.buildChaincodeArgs(function, args),
-	}
+	cmdArgs := fc.invokeArgs(function, args)
 
 	// Create command with timeout
 	cmdCtx, cancel := context.WithTimeout(ctx, fc.Config.InvokeTimeout)
@@ -94,14 +84,7 @@ func (fc *FabricClient) QueryChaincode(ctx context.Context, function string, arg
 	}
 
 	// Build peer chaincode query command
-	cmdArgs := []string{
-		"exec",
-		"peer0.org1.example.com",
-		"peer", "chaincode", "query",
-		"-C", fc.Config.Channel,
-		"-n", fc.Config.Chaincode,
-		"-c", fc.buildChaincodeArgs(function, args),
-	}
+	cmdArgs := fc.queryArgs(function, args)
 
 	// Create command with timeout
 	cmdCtx, cancel := context.WithTimeout(ctx, fc.Config.QueryTimeout)
@@ -170,6 +153,35 @@ func (fc *FabricClient) GetBatchHistory(ctx context.Context, batchID string) (*Q
 	return fc.QueryChaincode(ctx, "getBatchHistory", args)
 }
 
+// invokeArgs builds the `docker exec ... peer chaincode invoke` argument list
+// from configuration, so peer/orderer/cert locations are not hardcoded.
+func (fc *FabricClient) invokeArgs(function string, args []string) []string {
+	cmdArgs := []string{
+		"exec",
+		fc.Config.PeerContainer,
+		"peer", "chaincode", "invoke",
+		"-o", fc.Config.OrdererAddress,
+		"-C", fc.Config.Channel,
+		"-n", fc.Config.Chaincode,
+	}
+	if fc.Config.TLSEnabled {
+		cmdArgs = append(cmdArgs, "--tls", "--cafile", fc.Config.OrdererTLSCAFile)
+	}
+	return append(cmdArgs, "-c", fc.buildChaincodeArgs(function, args))
+}
+
+// queryArgs builds the `docker exec ... peer chaincode query` argument list.
+func (fc *FabricClient) queryArgs(function string, args []string) []string {
+	return []string{
+		"exec",
+		fc.Config.PeerContainer,
+		"peer", "chaincode", "query",
+		"-C", fc.Config.Channel,
+		"-n", fc.Config.Chaincode,
+		"-c", fc.buildChaincodeArgs(function, args),
+	}
+}
+
 // buildChaincodeArgs builds the chaincode arguments JSON string
 func (fc *FabricClient) buildChaincodeArgs(function string, args []string) string {
 	argsMap := map[string]interface{}{
@@ -209,7 +221,7 @@ func (fc *FabricClient) HealthCheck(ctx context.Context) error {
 	defer cancel()
 
 	// Check if peer container is running
-	cmd := exec.CommandContext(ctx, "docker", "ps", "--filter", "name=peer0.org1.example.com", "--format", "{{.Status}}")
+	cmd := exec.CommandContext(ctx, "docker", "ps", "--filter", "name="+fc.Config.PeerContainer, "--format", "{{.Status}}")
 	
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -229,11 +241,12 @@ func (fc *FabricClient) HealthCheck(ctx context.Context) error {
 // GetStats returns Fabric client statistics
 func (fc *FabricClient) GetStats() map[string]interface{} {
 	return map[string]interface{}{
-		"enabled":         fc.Config.SyncEnabled,
-		"channel":         fc.Config.Channel,
-		"chaincode":       fc.Config.Chaincode,
-		"max_workers":     fc.Config.SyncMaxWorkers,
-		"invoke_timeout":  fc.Config.InvokeTimeout.String(),
-		"query_timeout":   fc.Config.QueryTimeout.String(),
+		"enabled":        fc.Config.SyncEnabled,
+		"channel":        fc.Config.Channel,
+		"chaincode":      fc.Config.Chaincode,
+		"peer_container": fc.Config.PeerContainer,
+		"max_workers":    fc.Config.SyncMaxWorkers,
+		"invoke_timeout": fc.Config.InvokeTimeout.String(),
+		"query_timeout":  fc.Config.QueryTimeout.String(),
 	}
 }
