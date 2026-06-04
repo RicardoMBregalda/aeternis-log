@@ -7,7 +7,7 @@
 
 | Fase | Concluído | Progresso |
 |------|-----------|-----------|
-| Fase 1 — Estabilização Técnica | 2 ✅ + 1 🟡 de 8 | `▓▓▒░░░░░` |
+| Fase 1 — Estabilização Técnica | 4 ✅ de 8 | `▓▓▓▓░░░░` |
 | Fase 2 — Generalização do Domínio | 0 de 7 | `░░░░░░░` |
 | Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
 | Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
@@ -15,12 +15,10 @@
 ### ✅ Concluído (verificado)
 - **Logging estruturado (`zerolog`)** _(Fase 1)_ — pacote `internal/logger` (`internal/logger/logger.go`); todos os `fmt.Printf("DEBUG ...")` removidos do código de produção; `middleware.RequestLogger` registrado em `cmd/api/main.go`. _(ver Changelog)_
 - **WAL distribuído (Redis Streams)** _(Fase 1)_ — interface `wal.WAL` com backends `file` (default) e `redis` (`internal/wal/redis_wal.go`, consumer group + `XAUTOCLAIM`). Opt-in via `wal.backend: redis`; permite múltiplas instâncias da API sem perder a garantia de recuperação. Testes e2e validados contra Redis real. _(ver Changelog)_
-
-### 🟡 Parcial / em andamento
-- **Rate limiting** _(Fase 1)_ — a implementação **já existe**: `middleware.RateLimiter(maxRequests, window)` (`internal/middleware/middleware.go:55`, in-memory). Falta **conectar nas rotas** (`cmd/api/main.go` ainda não faz `router.Use(middleware.RateLimiter(...))`) e expor configuração por env. _(corrige o texto antigo "falta implementação")_
+- **Autenticação por API key** _(Fase 1)_ — middleware `middleware.APIKeyAuth` (comparação constant-time; header `X-API-Key` ou `Authorization: Bearer`), protegendo `logs`/`merkle`/`wal`/`stats`. Opt-in via `auth.enabled`; validação impede ligar sem keys. _(ver Changelog)_
+- **Rate limiting** _(Fase 1)_ — `middleware.RateLimiter` agora **conectado** via `rate_limit` config (opt-in, por IP). _(ver Changelog)_
 
 ### ⬜ Pendências prioritárias (próximo bloco da Fase 1)
-- **Autenticação JWT / API keys** — não existe nenhum middleware de auth hoje.
 - **Fabric via SDK** — ainda usa `docker exec` + container `peer0.org1.example.com` hardcoded (`internal/fabric/client.go:50,64,99,212`).
 - **Paginação por cursor** — ainda offset + `SetSkip` (`internal/handlers/logs.go:162,202`).
 - **`DeleteLog` real** — hoje é no-op: retorna `200` sem deletar (`internal/handlers/logs.go:306`).
@@ -50,7 +48,7 @@ Esse padrão — chamado de *Tamper-Evident Data Anchoring* — não é específ
 | Problema | Impacto | Arquivo |
 |----------|---------|---------|
 | Fabric client usa `docker exec` em vez do SDK | Quebrável, não escalável, acoplamento ao runtime Docker | `fabric/client.go:64` |
-| Sem autenticação/autorização na API | Qualquer requisição é aceita | `handlers/logs.go` |
+| ~~Sem autenticação/autorização na API~~ ✅ **resolvido** | Auth por API key (`middleware.APIKeyAuth`, opt-in) nas rotas de dados | `internal/middleware/middleware.go` |
 | ~~WAL é arquivo local~~ ✅ **resolvido** | Backend Redis Streams opt-in (`wal.backend: redis`) permite múltiplas instâncias | `internal/wal/redis_wal.go` |
 | ~~`fmt.Printf("DEBUG ...")` em handlers~~ ✅ **resolvido** | Substituído por logging estruturado (`zerolog`) | `internal/logger/` |
 | Container names hardcoded (`peer0.org1.example.com`) | Frágil para qualquer deploy real | `fabric/client.go:50` |
@@ -93,18 +91,18 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 
 ## Roadmap de Produto
 
-### Fase 1 — Estabilização Técnica (2-3 meses) — `2 ✅ + 1 🟡 de 8`
+### Fase 1 — Estabilização Técnica (2-3 meses) — `4 ✅ de 8`
 
 **Objetivo:** Tornar o código executável em ambiente real, não só em dev.
 
 - [ ] Substituir `docker exec` no `FabricClient` pela integração real com `fabric-sdk-go` (o SDK já está no `go.mod` mas não é usado)
 - [x] Remover todos os `fmt.Printf("DEBUG ...")` do código de produção — substituído por **structured logging com `zerolog`** (escolhido em vez de `slog` por compatibilidade com Go 1.18 e por ser zero-alocação no hot-path). Novo pacote `internal/logger`; logs em JSON com `request_id`, `service`, `caller`. _(ver changelog)_
-- [ ] Implementar autenticação: JWT para API keys de clientes, middleware em `internal/middleware/`
+- [x] **Autenticação por API key** — middleware `middleware.APIKeyAuth` em `internal/middleware/` (comparação constant-time; `X-API-Key` ou `Authorization: Bearer`). Protege `logs`/`merkle`/`wal`/`stats`; opt-in via `auth.enabled` + `auth.api_keys`. Keys em banco / por-tenant ficam para a Fase 2 (multi-tenancy). _(ver changelog)_
 - [x] **WAL distribuído** — backend Redis Streams (consumer group) opt-in via `wal.backend: redis`; default continua `file`. Interface `wal.WAL` + `RedisWAL`/`WriteAheadLog`(file)/`NoopWAL`; recuperação de instância morta via `XAUTOCLAIM`. Redis em modo AOF (`appendfsync always`) para paridade de durabilidade. _(ver changelog)_
 - [ ] Substituir paginação por offset por cursor (campo `created_at` + ID como cursor)
 - [ ] Implementar `DeleteLog` real com soft delete (campo `deleted_at`, não remove da blockchain)
 - [ ] Variáveis de ambiente para todas as configurações hardcoded (container names, paths)
-- [~] **Rate limiting** 🟡 — implementação já existe (`middleware.RateLimiter`, in-memory); falta conectar nas rotas (`router.Use(...)` em `cmd/api/main.go`) e expor config por env
+- [x] **Rate limiting** — `middleware.RateLimiter` conectado em `cmd/api/main.go` via config `rate_limit` (opt-in, por IP, com env overrides). _Nota:_ in-memory por instância; um limiter compartilhado em Redis é o follow-up para multi-instância. _(ver changelog)_
 
 ### Fase 2 — Generalização do Domínio (2-3 meses) — `0 de 7 (não iniciada)`
 
@@ -170,6 +168,25 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-03 — Segurança da API: autenticação + rate limiting
+
+Terceira leva (Fase 1). Fecha o problema crítico "qualquer requisição é aceita".
+
+**Autenticação por API key**
+- Novo middleware `middleware.APIKeyAuth(headerName, keys)`: aceita a key no header configurável (default `X-API-Key`) ou como `Authorization: Bearer <key>`; comparação **constant-time** (`crypto/subtle`) para não vazar a key por timing.
+- Protege as rotas de dados (`/logs`, `/merkle`, `/wal`, `/stats`); `/`, `/health` e `/swagger` ficam abertas. Aplicado por grupo em `cmd/api/main.go`.
+- Config `auth` (`enabled`, `header_name`, `api_keys`) + env (`AUTH_ENABLED`, `AUTH_HEADER_NAME`, `AUTH_API_KEYS` separada por vírgula). **Opt-in** (default off); validação impede ligar sem keys (anti-lockout).
+- Decisão: keys estáticas via config como MVP; keys em banco / por-tenant ficam para a Fase 2 (multi-tenancy).
+
+**Rate limiting**
+- `middleware.RateLimiter` (que existia mas não era usado) agora **conectado** em `cmd/api/main.go` via config `rate_limit` (`enabled`, `max_requests`, `window`) + env. Opt-in, por IP. Nota: in-memory por instância — limiter compartilhado em Redis é o follow-up para multi-instância.
+
+**Qualidade**
+- Novos testes: `internal/middleware/middleware_test.go` (auth válido/inválido/ausente, Bearer, rate limiter 429) e `pkg/config/config_test.go` (validação anti-lockout, rate limit, `splitAndTrim`).
+- `go build`, `go vet`, `go test ./...` limpos.
+
+**Próximos candidatos:** paginação por cursor, `DeleteLog` com soft delete, env vars para configs hardcoded do Fabric.
 
 ### 2026-06-03 — WAL distribuído (Redis Streams) + internacionalização
 

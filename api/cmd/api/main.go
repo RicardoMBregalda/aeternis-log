@@ -163,6 +163,25 @@ func main() {
 	router.Use(middleware.RequestLogger())
 	router.Use(middleware.CORS())
 	router.Use(middleware.SecurityHeaders())
+	if cfg.RateLimit.Enabled {
+		router.Use(middleware.RateLimiter(cfg.RateLimit.MaxRequests, cfg.RateLimit.Window))
+		lg.Info().
+			Int("max_requests", cfg.RateLimit.MaxRequests).
+			Dur("window", cfg.RateLimit.Window).
+			Msg("rate limiting enabled")
+	}
+
+	// API key authentication for protected routes (nil when disabled).
+	var authMW gin.HandlerFunc
+	if cfg.Auth.Enabled {
+		authMW = middleware.APIKeyAuth(cfg.Auth.HeaderName, cfg.Auth.APIKeys)
+		lg.Info().
+			Str("header", cfg.Auth.HeaderName).
+			Int("keys", len(cfg.Auth.APIKeys)).
+			Msg("API key authentication enabled")
+	} else {
+		lg.Warn().Msg("API authentication disabled (all requests accepted)")
+	}
 
 	healthHandler := handlers.NewHealthHandler(mongoClient, collections, redisCache, fabricClient, batchProcessor, Version, BuildTime)
 	logHandler := handlers.NewLogHandler(collections, redisCache, walInstance)
@@ -170,7 +189,7 @@ func main() {
 	walHandler := handlers.NewWALHandler(walInstance)
 	statsHandler := handlers.NewStatsHandler(collections, mongoClient, redisCache, fabricClient, batchProcessor, walInstance)
 
-	registerRoutes(router, healthHandler, logHandler, merkleHandler, walHandler, statsHandler)
+	registerRoutes(router, authMW, healthHandler, logHandler, merkleHandler, walHandler, statsHandler)
 
 	srv := &http.Server{
 		Addr:         cfg.GetServerAddr(),
@@ -206,9 +225,11 @@ func main() {
 	lg.Info().Msg("server exited gracefully")
 }
 
-// registerRoutes registers all API routes.
+// registerRoutes registers all API routes. authMW, when non-nil, protects the
+// data routes (logs, merkle, wal, stats); health, root and swagger stay open.
 func registerRoutes(
 	router *gin.Engine,
+	authMW gin.HandlerFunc,
 	healthHandler *handlers.HealthHandler,
 	logHandler *handlers.LogHandler,
 	merkleHandler *handlers.MerkleHandler,
@@ -233,6 +254,9 @@ func registerRoutes(
 	}
 
 	logs := router.Group("/logs")
+	if authMW != nil {
+		logs.Use(authMW)
+	}
 	{
 		logs.POST("", logHandler.CreateLog)
 		logs.GET("", logHandler.GetLogs)
@@ -241,6 +265,9 @@ func registerRoutes(
 	}
 
 	merkleGroup := router.Group("/merkle")
+	if authMW != nil {
+		merkleGroup.Use(authMW)
+	}
 	{
 		merkleGroup.POST("/batch", merkleHandler.CreateBatch)
 		merkleGroup.GET("/batch/:id", merkleHandler.GetBatch)
@@ -251,6 +278,9 @@ func registerRoutes(
 	}
 
 	walGroup := router.Group("/wal")
+	if authMW != nil {
+		walGroup.Use(authMW)
+	}
 	{
 		walGroup.GET("/stats", walHandler.GetStats)
 		walGroup.POST("/force-process", walHandler.ForceProcess)
@@ -258,6 +288,9 @@ func registerRoutes(
 	}
 
 	stats := router.Group("/stats")
+	if authMW != nil {
+		stats.Use(authMW)
+	}
 	{
 		stats.GET("", statsHandler.GetStats)
 		stats.GET("/logs", statsHandler.GetLogStats)

@@ -80,3 +80,19 @@ metrics:
   enabled: true
   port: 9090
   path: "/metrics"
+
+# API key authentication for protected routes (logs, merkle, wal, stats).
+# Disabled by default; enable in production and configure at least one key.
+# Clients send the key in `header_name` or as "Authorization: Bearer <key>".
+auth:
+  enabled: false
+  header_name: "X-API-Key"
+  api_keys: []
+  # api_keys:
+  #   - "replace-with-a-strong-random-key"
+
+# Per-client-IP rate limiting (in-memory, per instance).
+rate_limit:
+  enabled: false
+  max_requests: 100
+  window: 1m
