@@ -273,6 +273,12 @@ func BuildLogListKey(source, level string, limit, offset int) string {
 	return fmt.Sprintf("logs:list:%s:%s:%d:%d", source, level, limit, offset)
 }
 
+// BuildLogListCursorKey builds the cache key for a cursor-paginated log list.
+// It shares the "logs:list:" prefix so InvalidateLogCache clears it too.
+func BuildLogListCursorKey(source, level string, limit int, cursor string) string {
+	return fmt.Sprintf("logs:list:%s:%s:%d:cursor:%s", source, level, limit, cursor)
+}
+
 // BuildLogKey builds cache key for individual log
 func BuildLogKey(logID string) string {
 	return fmt.Sprintf("log:%s", logID)

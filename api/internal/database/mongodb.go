@@ -100,7 +100,12 @@ func (mc *MongoClient) CreateIndexes(ctx context.Context) error {
 			},
 		},
 		{
-			Keys: bson.D{{Key: "created_at", Value: -1}},
+			// Compound index supporting created_at sorting and (created_at, id)
+			// keyset/cursor pagination (the id prefix covers created_at-only use).
+			Keys: bson.D{
+				{Key: "created_at", Value: -1},
+				{Key: "id", Value: -1},
+			},
 		},
 		{
 			Keys: bson.D{{Key: "batch_id", Value: 1}},
