@@ -61,7 +61,9 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    # AOF with appendfsync=always gives per-write durability, matching the file
+    # WAL's fsync guarantee when wal.backend is "redis" (zero data loss).
+    command: redis-server --appendonly yes --appendfsync always
     networks:
       - tcc-network
     restart: unless-stopped

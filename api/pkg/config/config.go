@@ -80,6 +80,20 @@ type WALConfig struct {
 	MaxFileSizeMB   int           `yaml:"max_file_size_mb"`
 	RotationEnabled bool          `yaml:"rotation_enabled"`
 	RetentionDays   int           `yaml:"retention_days"`
+
+	// Backend selects the WAL implementation:
+	//   "file"  - local append-only file with fsync (single instance)
+	//   "redis" - Redis Streams + consumer group (supports multiple API instances)
+	// Durability in "redis" mode depends on Redis persistence: run Redis with
+	// AOF enabled (appendfsync always for parity with the file fsync).
+	Backend string `yaml:"backend"`
+
+	// Redis Streams backend settings (used when Backend == "redis").
+	StreamKey     string        `yaml:"stream_key"`     // stream that holds pending entries
+	ConsumerGroup string        `yaml:"consumer_group"` // shared group across API instances
+	ReadCount     int64         `yaml:"read_count"`     // max entries fetched per read
+	BlockTimeout  time.Duration `yaml:"block_timeout"`  // XREADGROUP block duration
+	ClaimMinIdle  time.Duration `yaml:"claim_min_idle"` // reclaim entries idle longer than this
 }
 
 // BatchingConfig holds Merkle Tree batching configuration
@@ -160,6 +174,12 @@ func LoadConfig(configPath string) (*Config, error) {
 			MaxFileSizeMB:   100,
 			RotationEnabled: true,
 			RetentionDays:   7,
+			Backend:         "file",
+			StreamKey:       "wal:pending:logs",
+			ConsumerGroup:   "wal-processors",
+			ReadCount:       128,
+			BlockTimeout:    2 * time.Second,
+			ClaimMinIdle:    30 * time.Second,
 		},
 		Batching: BatchingConfig{
 			Enabled:              true,
@@ -304,6 +324,15 @@ func overrideFromEnv(config *Config) {
 			config.WAL.CheckInterval = duration
 		}
 	}
+	if val := os.Getenv("WAL_BACKEND"); val != "" {
+		config.WAL.Backend = val
+	}
+	if val := os.Getenv("WAL_STREAM_KEY"); val != "" {
+		config.WAL.StreamKey = val
+	}
+	if val := os.Getenv("WAL_CONSUMER_GROUP"); val != "" {
+		config.WAL.ConsumerGroup = val
+	}
 
 	// Batching
 	if val := os.Getenv("BATCHING_ENABLED"); val != "" {
@@ -361,8 +390,22 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate WAL
-	if c.WAL.Enabled && c.WAL.Directory == "" {
-		return fmt.Errorf("wal directory is required when wal is enabled")
+	if c.WAL.Enabled {
+		switch c.WAL.Backend {
+		case "file":
+			if c.WAL.Directory == "" {
+				return fmt.Errorf("wal directory is required when wal backend is file")
+			}
+		case "redis":
+			if c.WAL.StreamKey == "" {
+				return fmt.Errorf("wal stream_key is required when wal backend is redis")
+			}
+			if c.WAL.ConsumerGroup == "" {
+				return fmt.Errorf("wal consumer_group is required when wal backend is redis")
+			}
+		default:
+			return fmt.Errorf("invalid wal backend: %q (must be \"file\" or \"redis\")", c.WAL.Backend)
+		}
 	}
 
 	// Validate Batching

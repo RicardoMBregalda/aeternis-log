@@ -45,11 +45,22 @@ fabric:
 
 wal:
   enabled: true
+  # backend: "file" (local, single instance) or "redis" (Redis Streams,
+  # supports running multiple API instances). In "redis" mode durability
+  # depends on Redis persistence: run Redis with AOF enabled
+  # (appendonly yes; appendfsync always for parity with the file fsync).
+  backend: "file"
   directory: "/var/log/tcc-wal"
   check_interval: 5s
   max_file_size_mb: 100
   rotation_enabled: true
   retention_days: 7
+  # Redis Streams backend settings (used when backend == "redis")
+  stream_key: "wal:pending:logs"
+  consumer_group: "wal-processors"
+  read_count: 128
+  block_timeout: 2s
+  claim_min_idle: 30s
 
 batching:
   enabled: true

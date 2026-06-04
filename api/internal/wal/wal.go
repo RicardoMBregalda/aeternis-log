@@ -76,49 +76,6 @@ func NewWriteAheadLog(walDir string, checkInterval time.Duration) (*WriteAheadLo
 	return wal, nil
 }
 
-// NewWriteAheadLogWithConfig creates a WAL instance from config
-func NewWriteAheadLogWithConfig(cfg interface{}, insertCallback func(*models.Log) error) *WriteAheadLog {
-	// Try to extract fields from config interface
-	var dir string
-	var interval time.Duration
-	enabled := true
-	
-	// Use type assertion to get config values
-	if cfgMap, ok := cfg.(map[string]interface{}); ok {
-		if d, ok := cfgMap["directory"].(string); ok {
-			dir = d
-		}
-		if i, ok := cfgMap["check_interval"].(time.Duration); ok {
-			interval = i
-		}
-		if e, ok := cfgMap["enabled"].(bool); ok {
-			enabled = e
-		}
-	}
-	
-	// Set defaults
-	if dir == "" {
-		dir = "/var/log/tcc-wal"
-	}
-	if interval == 0 {
-		interval = 5 * time.Second
-	}
-	
-	wal, err := NewWriteAheadLog(dir, interval)
-	if err != nil || !enabled {
-		// Return dummy WAL if disabled or error
-		return &WriteAheadLog{
-			walDir:        dir,
-			checkInterval: interval,
-			stopChan:      make(chan struct{}),
-			running:       false,
-		}
-	}
-	
-	wal.insertCallback = insertCallback
-	return wal
-}
-
 // Write writes a log entry to the WAL
 // This operation MUST be fast (< 1ms) and reliable
 func (w *WriteAheadLog) Write(log *models.Log) error {

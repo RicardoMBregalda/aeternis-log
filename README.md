@@ -18,7 +18,7 @@ POST /logs ──► WAL (fsync) ──► MongoDB ──► batch (Merkle root)
 | **MongoDB** | Off-chain storage for logs (hot tier) |
 | **Redis** | Optional cache (graceful degradation if absent) |
 | **Hyperledger Fabric** (`hybrid-architecture/`) | Permissioned blockchain (Raft consensus) that stores the Merkle roots; chaincode in Go |
-| **WAL** | Durability (0% loss) with `O_SYNC` + `fsync` |
+| **WAL** | Durability (0% loss). Two backends: `file` (`O_SYNC` + `fsync`, single instance) or `redis` (Redis Streams consumer group, multiple API instances) |
 
 ## Prerequisites
 
@@ -88,6 +88,8 @@ curl -X POST http://localhost:5001/logs \
 ## Configuration
 
 The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`.
+
+**Running multiple API instances:** set `wal.backend: redis` (or `WAL_BACKEND=redis`). The WAL then uses a Redis Streams consumer group, so each log entry is processed by exactly one instance and entries from a crashed instance are reclaimed automatically. In this mode durability depends on Redis persistence — run Redis with AOF enabled (`appendonly yes`; `appendfsync always` for parity with the file backend's per-write `fsync`). The default `file` backend keeps the original single-instance behavior.
 
 ## Development
 
