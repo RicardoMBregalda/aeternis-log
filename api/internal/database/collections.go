@@ -74,6 +74,25 @@ func (c *Collections) FindLogByID(ctx context.Context, logID string) (*models.Lo
 	return &log, nil
 }
 
+// SoftDeleteLog marks a log as deleted by setting deleted_at, without removing
+// the document. This preserves the audit trail and the on-chain Merkle anchor:
+// soft-deleted logs are hidden from the user-facing list/get endpoints but stay
+// available for batch verification. Returns mongo.ErrNoDocuments when no
+// matching, not-yet-deleted log exists.
+func (c *Collections) SoftDeleteLog(ctx context.Context, logID string) error {
+	filter := bson.M{"id": logID, "deleted_at": bson.M{"$exists": false}}
+	update := bson.M{"$currentDate": bson.M{"deleted_at": true}}
+
+	result, err := c.Logs.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to soft delete log: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
+}
+
 // UpdateLogBatch updates logs with batch information
 func (c *Collections) UpdateLogBatch(ctx context.Context, logIDs []string, batchID, merkleRoot string) error {
 	filter := bson.M{"id": bson.M{"$in": logIDs}}

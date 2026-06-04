@@ -2,12 +2,15 @@ package database
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
 	"github.com/google/uuid"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // TestMongoClientConnection tests MongoDB connection
@@ -164,6 +167,79 @@ func TestCollectionsOperations(t *testing.T) {
 	}
 	if stats.Synced != 1 {
 		t.Errorf("Expected 1 synced log, got %d", stats.Synced)
+	}
+}
+
+// TestSoftDeleteLog verifies that soft delete preserves the document, hides it
+// from active listings, and is idempotent for already-deleted/missing logs.
+func TestSoftDeleteLog(t *testing.T) {
+	cfg := &config.MongoDBConfig{
+		URL:                      "mongodb://localhost:27017",
+		Database:                 "logdb_test",
+		Collection:               "logs_test",
+		SyncControlCollection:    "sync_control_test",
+		MinPoolSize:              5,
+		MaxPoolSize:              10,
+		MaxIdleTimeMS:            60000,
+		ServerSelectionTimeoutMS: 5000,
+		ConnectTimeout:           10 * time.Second,
+		SocketTimeout:            30 * time.Second,
+	}
+
+	client, err := NewMongoClient(cfg)
+	if err != nil {
+		t.Skipf("MongoDB not available: %v", err)
+		return
+	}
+	defer client.Close(context.Background())
+
+	collections := NewCollections(client)
+	ctx := context.Background()
+	client.Database.Collection(cfg.Collection).Drop(ctx)
+
+	log := &models.Log{
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().Format(time.RFC3339),
+		Level:     models.LogLevelInfo,
+		Message:   "soft delete test",
+		Source:    "test-service",
+		CreatedAt: models.FlexTime{Time: time.Now()},
+	}
+	log.Hash = log.CalculateHash()
+	if err := collections.InsertLog(ctx, log); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	// Soft delete sets deleted_at and keeps the document.
+	if err := collections.SoftDeleteLog(ctx, log.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	found, err := collections.FindLogByID(ctx, log.ID)
+	if err != nil {
+		t.Fatalf("document should still exist after soft delete: %v", err)
+	}
+	if found.DeletedAt == nil {
+		t.Error("expected deleted_at to be set")
+	}
+
+	// Listings that exclude deleted must not return it.
+	active, err := collections.FindLogs(ctx, bson.M{"deleted_at": bson.M{"$exists": false}}, NewFindOptions())
+	if err != nil {
+		t.Fatalf("find active: %v", err)
+	}
+	for _, l := range active {
+		if l.ID == log.ID {
+			t.Error("soft-deleted log should not appear in active listing")
+		}
+	}
+
+	// Re-deleting or deleting a missing log reports ErrNoDocuments.
+	if err := collections.SoftDeleteLog(ctx, log.ID); !errors.Is(err, mongo.ErrNoDocuments) {
+		t.Errorf("re-delete: expected ErrNoDocuments, got %v", err)
+	}
+	if err := collections.SoftDeleteLog(ctx, "does-not-exist"); !errors.Is(err, mongo.ErrNoDocuments) {
+		t.Errorf("missing log: expected ErrNoDocuments, got %v", err)
 	}
 }
 

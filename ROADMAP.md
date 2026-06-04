@@ -7,7 +7,7 @@
 
 | Fase | Concluído | Progresso |
 |------|-----------|-----------|
-| Fase 1 — Estabilização Técnica | 4 ✅ de 8 | `▓▓▓▓░░░░` |
+| Fase 1 — Estabilização Técnica | 5 ✅ de 8 | `▓▓▓▓▓░░░` |
 | Fase 2 — Generalização do Domínio | 0 de 7 | `░░░░░░░` |
 | Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
 | Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
@@ -17,11 +17,11 @@
 - **WAL distribuído (Redis Streams)** _(Fase 1)_ — interface `wal.WAL` com backends `file` (default) e `redis` (`internal/wal/redis_wal.go`, consumer group + `XAUTOCLAIM`). Opt-in via `wal.backend: redis`; permite múltiplas instâncias da API sem perder a garantia de recuperação. Testes e2e validados contra Redis real. _(ver Changelog)_
 - **Autenticação por API key** _(Fase 1)_ — middleware `middleware.APIKeyAuth` (comparação constant-time; header `X-API-Key` ou `Authorization: Bearer`), protegendo `logs`/`merkle`/`wal`/`stats`. Opt-in via `auth.enabled`; validação impede ligar sem keys. _(ver Changelog)_
 - **Rate limiting** _(Fase 1)_ — `middleware.RateLimiter` agora **conectado** via `rate_limit` config (opt-in, por IP). _(ver Changelog)_
+- **`DeleteLog` soft delete** _(Fase 1)_ — `DELETE /logs/:id` agora marca `deleted_at` (`collections.SoftDeleteLog`) em vez de no-op; documento e âncora na blockchain preservados; deletados escondidos das rotas de leitura. _(ver Changelog)_
 
 ### ⬜ Pendências prioritárias (próximo bloco da Fase 1)
 - **Fabric via SDK** — ainda usa `docker exec` + container `peer0.org1.example.com` hardcoded (`internal/fabric/client.go:50,64,99,212`).
 - **Paginação por cursor** — ainda offset + `SetSkip` (`internal/handlers/logs.go:162,202`).
-- **`DeleteLog` real** — hoje é no-op: retorna `200` sem deletar (`internal/handlers/logs.go:306`).
 - **Env vars para configs hardcoded** — nomes de container/paths ainda no código.
 
 ---
@@ -52,7 +52,7 @@ Esse padrão — chamado de *Tamper-Evident Data Anchoring* — não é específ
 | ~~WAL é arquivo local~~ ✅ **resolvido** | Backend Redis Streams opt-in (`wal.backend: redis`) permite múltiplas instâncias | `internal/wal/redis_wal.go` |
 | ~~`fmt.Printf("DEBUG ...")` em handlers~~ ✅ **resolvido** | Substituído por logging estruturado (`zerolog`) | `internal/logger/` |
 | Container names hardcoded (`peer0.org1.example.com`) | Frágil para qualquer deploy real | `fabric/client.go:50` |
-| `DeleteLog` é no-op silencioso | Retorna 200 sem deletar nada | `handlers/logs.go:338` |
+| ~~`DeleteLog` é no-op silencioso~~ ✅ **resolvido** | Soft delete real (`deleted_at`), preservando documento e âncora | `internal/handlers/logs.go` |
 | Rede Fabric de dev (1 org, 1 peer, 1 orderer) | Sem tolerância a falhas na blockchain | `fabric-network/` |
 | Paginação por offset | Não escala para datasets grandes | `handlers/logs.go:204` |
 
@@ -91,7 +91,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 
 ## Roadmap de Produto
 
-### Fase 1 — Estabilização Técnica (2-3 meses) — `4 ✅ de 8`
+### Fase 1 — Estabilização Técnica (2-3 meses) — `5 ✅ de 8`
 
 **Objetivo:** Tornar o código executável em ambiente real, não só em dev.
 
@@ -100,7 +100,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **Autenticação por API key** — middleware `middleware.APIKeyAuth` em `internal/middleware/` (comparação constant-time; `X-API-Key` ou `Authorization: Bearer`). Protege `logs`/`merkle`/`wal`/`stats`; opt-in via `auth.enabled` + `auth.api_keys`. Keys em banco / por-tenant ficam para a Fase 2 (multi-tenancy). _(ver changelog)_
 - [x] **WAL distribuído** — backend Redis Streams (consumer group) opt-in via `wal.backend: redis`; default continua `file`. Interface `wal.WAL` + `RedisWAL`/`WriteAheadLog`(file)/`NoopWAL`; recuperação de instância morta via `XAUTOCLAIM`. Redis em modo AOF (`appendfsync always`) para paridade de durabilidade. _(ver changelog)_
 - [ ] Substituir paginação por offset por cursor (campo `created_at` + ID como cursor)
-- [ ] Implementar `DeleteLog` real com soft delete (campo `deleted_at`, não remove da blockchain)
+- [x] **`DeleteLog` soft delete** — `collections.SoftDeleteLog` marca `deleted_at` (via `$currentDate`); documento e âncora na blockchain preservados (não entra no `CalculateHash`). Deletados escondidos de `GET /logs` e `GET /logs/:id`; idempotente. _(ver changelog)_
 - [ ] Variáveis de ambiente para todas as configurações hardcoded (container names, paths)
 - [x] **Rate limiting** — `middleware.RateLimiter` conectado em `cmd/api/main.go` via config `rate_limit` (opt-in, por IP, com env overrides). _Nota:_ in-memory por instância; um limiter compartilhado em Redis é o follow-up para multi-instância. _(ver changelog)_
 
@@ -168,6 +168,17 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-03 — DeleteLog com soft delete
+
+Quarta leva (Fase 1). Resolve o `DeleteLog` no-op silencioso.
+
+- Novo campo `Log.DeletedAt` (`*FlexTime`, `omitempty`), **fora** do `CalculateHash` — soft-deletar nunca invalida a prova de integridade nem a âncora on-chain.
+- `collections.SoftDeleteLog(id)` marca `deleted_at` via `$currentDate` (só se ainda não deletado); retorna `mongo.ErrNoDocuments` se não existe. O documento permanece para verificação de batch.
+- `DELETE /logs/:id` reescrito: era no-op (retornava 200 sem deletar), agora faz soft delete idempotente e invalida o cache. `GET /logs` e `GET /logs/:id` escondem deletados (`deleted_at` `$exists:false`); queries internas de batch/verificação continuam vendo tudo.
+- Teste `database.TestSoftDeleteLog` (contra Mongo real): preserva documento, esconde de listagens, idempotência. `go build`/`vet`/`test ./...` limpos.
+
+**Próximos candidatos:** paginação por cursor, env vars para configs hardcoded do Fabric, Fabric via SDK.
 
 ### 2026-06-03 — Segurança da API: autenticação + rate limiting
 

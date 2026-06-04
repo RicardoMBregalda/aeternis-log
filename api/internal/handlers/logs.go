@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // LogHandler handles log-related HTTP requests
@@ -187,8 +189,8 @@ func (h *LogHandler) GetLogs(c *gin.Context) {
 		}
 	}
 
-	// Build filter
-	filter := bson.M{}
+	// Build filter (soft-deleted logs are hidden from listings)
+	filter := bson.M{"deleted_at": bson.M{"$exists": false}}
 	if source != "" {
 		filter["source"] = source
 	}
@@ -284,6 +286,16 @@ func (h *LogHandler) GetLogByID(c *gin.Context) {
 		return
 	}
 
+	// Hide soft-deleted logs from the read endpoint (still preserved for audit).
+	if log.DeletedAt != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error:   "not_found",
+			Message: fmt.Sprintf("Log not found: %s", logID),
+			Code:    http.StatusNotFound,
+		})
+		return
+	}
+
 	// Cache log
 	if h.cache.Enabled {
 		h.cache.SetJSON(ctx, cacheKey, log, 30*time.Minute)
@@ -293,9 +305,9 @@ func (h *LogHandler) GetLogByID(c *gin.Context) {
 	c.JSON(http.StatusOK, log)
 }
 
-// DeleteLog handles DELETE /logs/:id (bonus endpoint)
-// @Summary Delete a log
-// @Description Delete a log by its ID
+// DeleteLog handles DELETE /logs/:id
+// @Summary Soft-delete a log
+// @Description Soft-delete a log by ID (sets deleted_at; the document and its blockchain anchor are preserved)
 // @Tags Logs
 // @Produce json
 // @Param id path string true "Log ID"
@@ -318,8 +330,8 @@ func (h *LogHandler) DeleteLog(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	// Check if log exists
-	_, err := h.collections.FindLogByID(ctx, logID)
+	// Confirm the log exists (and capture its source for cache invalidation).
+	existing, err := h.collections.FindLogByID(ctx, logID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{
 			Error:   "not_found",
@@ -329,19 +341,31 @@ func (h *LogHandler) DeleteLog(c *gin.Context) {
 		return
 	}
 
-	// Note: In production, you might want soft delete or archive instead of hard delete
-	// For now, we'll return success without actual deletion to preserve audit trail
-	
-	// Invalidate cache
+	// Soft delete: set deleted_at, keeping the document and its on-chain Merkle
+	// anchor intact. Idempotent if the log was already deleted.
+	if existing.DeletedAt == nil {
+		if err := h.collections.SoftDeleteLog(ctx, logID); err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+				Error:   "database_error",
+				Message: "Failed to delete log",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+	}
+
+	// Invalidate caches so the log no longer appears in reads/listings.
 	if h.cache.Enabled {
 		h.cache.Delete(ctx, cache.BuildLogKey(logID))
+		h.cache.InvalidateLogCache(ctx, existing.Source)
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse{
 		Status:  "success",
-		Message: "Log deletion requested (audit trail preserved)",
+		Message: "Log soft-deleted (audit trail and blockchain anchor preserved)",
 		Data: gin.H{
-			"id": logID,
+			"id":           logID,
+			"soft_deleted": true,
 		},
 	})
 }

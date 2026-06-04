@@ -36,6 +36,10 @@ type Log struct {
 	BatchID    string                 `json:"batch_id,omitempty" bson:"batch_id,omitempty"`
 	MerkleRoot string                 `json:"merkle_root,omitempty" bson:"merkle_root,omitempty"`
 	BatchedAt  *FlexTime              `json:"batched_at,omitempty" bson:"batched_at,omitempty"`
+	// DeletedAt marks a soft-deleted log. It is metadata added after creation
+	// and is intentionally excluded from CalculateHash, so soft-deleting a log
+	// never invalidates its integrity proof or its on-chain Merkle anchor.
+	DeletedAt *FlexTime `json:"deleted_at,omitempty" bson:"deleted_at,omitempty"`
 }
 
 // FlexTime is a flexible time type that can parse multiple formats
