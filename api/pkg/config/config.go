@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -17,8 +18,26 @@ type Config struct {
 	Fabric   FabricConfig   `yaml:"fabric"`
 	WAL      WALConfig      `yaml:"wal"`
 	Batching BatchingConfig `yaml:"batching"`
-	Logging  LoggingConfig  `yaml:"logging"`
-	Metrics  MetricsConfig  `yaml:"metrics"`
+	Logging   LoggingConfig   `yaml:"logging"`
+	Metrics   MetricsConfig   `yaml:"metrics"`
+	Auth      AuthConfig      `yaml:"auth"`
+	RateLimit RateLimitConfig `yaml:"rate_limit"`
+}
+
+// AuthConfig holds API authentication configuration. When enabled, requests to
+// protected routes must present a valid API key (default header: X-API-Key, or
+// "Authorization: Bearer <key>").
+type AuthConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	HeaderName string   `yaml:"header_name"`
+	APIKeys    []string `yaml:"api_keys"`
+}
+
+// RateLimitConfig holds per-client-IP rate limiting configuration.
+type RateLimitConfig struct {
+	Enabled     bool          `yaml:"enabled"`
+	MaxRequests int           `yaml:"max_requests"`
+	Window      time.Duration `yaml:"window"`
 }
 
 // ServerConfig holds HTTP server configuration
@@ -200,6 +219,15 @@ func LoadConfig(configPath string) (*Config, error) {
 			Port:    9090,
 			Path:    "/metrics",
 		},
+		Auth: AuthConfig{
+			Enabled:    false,
+			HeaderName: "X-API-Key",
+		},
+		RateLimit: RateLimitConfig{
+			Enabled:     false,
+			MaxRequests: 100,
+			Window:      time.Minute,
+		},
 	}
 
 	// Load from YAML file if exists
@@ -356,6 +384,44 @@ func overrideFromEnv(config *Config) {
 	if val := os.Getenv("LOG_FORMAT"); val != "" {
 		config.Logging.Format = val
 	}
+
+	// Auth
+	if val := os.Getenv("AUTH_ENABLED"); val != "" {
+		config.Auth.Enabled = val == "true"
+	}
+	if val := os.Getenv("AUTH_HEADER_NAME"); val != "" {
+		config.Auth.HeaderName = val
+	}
+	if val := os.Getenv("AUTH_API_KEYS"); val != "" {
+		config.Auth.APIKeys = splitAndTrim(val, ",")
+	}
+
+	// Rate limiting
+	if val := os.Getenv("RATE_LIMIT_ENABLED"); val != "" {
+		config.RateLimit.Enabled = val == "true"
+	}
+	if val := os.Getenv("RATE_LIMIT_MAX_REQUESTS"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			config.RateLimit.MaxRequests = n
+		}
+	}
+	if val := os.Getenv("RATE_LIMIT_WINDOW"); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			config.RateLimit.Window = d
+		}
+	}
+}
+
+// splitAndTrim splits s by sep and drops empty/whitespace-only items.
+func splitAndTrim(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Validate validates the configuration
@@ -422,6 +488,26 @@ func (c *Config) Validate() error {
 	}
 	if !validLogLevels[c.Logging.Level] {
 		return fmt.Errorf("invalid log level: %s", c.Logging.Level)
+	}
+
+	// Validate auth
+	if c.Auth.Enabled {
+		if len(c.Auth.APIKeys) == 0 {
+			return fmt.Errorf("auth is enabled but no api_keys are configured")
+		}
+		if c.Auth.HeaderName == "" {
+			return fmt.Errorf("auth header_name is required when auth is enabled")
+		}
+	}
+
+	// Validate rate limiting
+	if c.RateLimit.Enabled {
+		if c.RateLimit.MaxRequests < 1 {
+			return fmt.Errorf("invalid rate_limit max_requests: %d", c.RateLimit.MaxRequests)
+		}
+		if c.RateLimit.Window <= 0 {
+			return fmt.Errorf("rate_limit window must be positive")
+		}
 	}
 
 	return nil

@@ -2,8 +2,10 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -89,6 +91,45 @@ func RateLimiter(maxRequests int, window time.Duration) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// APIKeyAuth authenticates requests against a set of accepted API keys. The key
+// may be sent in the configured header (e.g. X-API-Key) or as a Bearer token in
+// the Authorization header. Keys are compared in constant time.
+func APIKeyAuth(headerName string, keys []string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		presented := c.GetHeader(headerName)
+		if presented == "" {
+			if auth := c.GetHeader("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+				presented = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+			}
+		}
+
+		if presented == "" || !matchAPIKey(presented, keys) {
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+				Error:   "unauthorized",
+				Message: "missing or invalid API key",
+				Code:    http.StatusUnauthorized,
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// matchAPIKey reports whether presented matches any accepted key. It checks
+// every key (no early return) and uses a constant-time comparison so the
+// response timing does not leak key contents.
+func matchAPIKey(presented string, keys []string) bool {
+	match := false
+	for _, k := range keys {
+		if subtle.ConstantTimeCompare([]byte(presented), []byte(k)) == 1 {
+			match = true
+		}
+	}
+	return match
 }
 
 // Timeout middleware adds a timeout to requests

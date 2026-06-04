@@ -85,9 +85,30 @@ curl -X POST http://localhost:5001/logs \
   -d '{"source": "auth-service", "level": "INFO", "message": "User login successful"}'
 ```
 
+## Authentication & rate limiting
+
+API key authentication and rate limiting are **opt-in** (off by default). Enable them in production:
+
+```bash
+AUTH_ENABLED=true
+AUTH_API_KEYS=key-a,key-b          # comma-separated; configure at least one
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_MAX_REQUESTS=100        # per client IP, per window
+RATE_LIMIT_WINDOW=1m
+```
+
+When auth is enabled, the data routes (`/logs`, `/merkle`, `/wal`, `/stats`) require a key; `/health`, `/` and `/swagger` stay open. Send the key in `X-API-Key` or as a bearer token:
+
+```bash
+curl -H 'X-API-Key: key-a' http://localhost:5001/logs
+curl -H 'Authorization: Bearer key-a' http://localhost:5001/logs
+```
+
+Rate limiting is in-memory **per instance**; a Redis-backed shared limiter is the follow-up for multi-instance deployments.
+
 ## Configuration
 
-The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`.
+The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`, `auth`, `rate_limit`.
 
 **Running multiple API instances:** set `wal.backend: redis` (or `WAL_BACKEND=redis`). The WAL then uses a Redis Streams consumer group, so each log entry is processed by exactly one instance and entries from a crashed instance are reclaimed automatically. In this mode durability depends on Redis persistence — run Redis with AOF enabled (`appendonly yes`; `appendfsync always` for parity with the file backend's per-write `fsync`). The default `file` backend keeps the original single-instance behavior.
 
