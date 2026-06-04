@@ -10,15 +10,15 @@ rm -rf config
 mkdir config
 
 # Generate the cryptographic material (certificates and keys)
-echo "####### Generating cryptographic material using cryptogen... #######"
+echo "Generating cryptographic material using cryptogen..."
 cryptogen generate --config=./crypto-config.yaml
 
 # Generate the orderer service genesis block
-echo "####### Generating the Genesis Block... #######"
+echo "Generating the genesis block..."
 configtxgen -profile OneOrgOrdererGenesis -outputBlock ./config/genesis.block -channelID system-channel
 
 # Generate the channel creation transaction
-echo "####### Generating the channel creation transaction... #######"
+echo "Generating the channel creation transaction..."
 configtxgen -profile OneOrgChannel -outputCreateChannelTx ./config/logchannel.tx -channelID logchannel
 
-echo "####### Artifact generation complete! #######"
+echo "Artifact generation complete."

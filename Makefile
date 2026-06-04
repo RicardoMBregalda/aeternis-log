@@ -1,7 +1,7 @@
 # ============================================================================
-# tcc-log-management — orquestração
-# Sobe a blockchain (Hyperledger Fabric) e a API (Go + MongoDB + Redis) juntas.
-# A rede Fabric e a API compartilham a rede Docker $(NETWORK).
+# tcc-log-management — orchestration
+# Brings up the blockchain (Hyperledger Fabric) and the API (Go + MongoDB + Redis) together.
+# The Fabric network and the API share the Docker network $(NETWORK).
 # ============================================================================
 
 SHELL := /bin/bash
@@ -13,96 +13,96 @@ API_DIR    := api
 .DEFAULT_GOAL := help
 
 # ----------------------------------------------------------------------------
-# Geral
+# General
 # ----------------------------------------------------------------------------
 
 .PHONY: help
-help: ## Mostra esta ajuda
+help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: up
-up: blockchain api ## Sobe TUDO na ordem certa: blockchain depois API
+up: blockchain api ## Bring up EVERYTHING in the right order: blockchain then API
 	@echo ""
-	@echo "✅ Stack no ar."
+	@echo "Stack is up."
 	@echo "   API:     http://localhost:5001"
 	@echo "   Health:  http://localhost:5001/health"
 	@echo "   Swagger: http://localhost:5001/swagger/index.html"
 
 .PHONY: down
-down: ## Para TUDO (API + blockchain), mantém os dados
+down: ## Stop EVERYTHING (API + blockchain), keep the data
 	-cd $(API_DIR) && docker compose down
 	-cd $(FABRIC_DIR) && docker-compose down
 
 .PHONY: restart
-restart: down up ## Reinicia tudo
+restart: down up ## Restart everything
 
 .PHONY: status
-status: ## Lista os containers ligados à rede do projeto
+status: ## List the containers attached to the project network
 	@docker ps --filter "network=$(NETWORK)" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # ----------------------------------------------------------------------------
-# Componentes individuais
+# Individual components
 # ----------------------------------------------------------------------------
 
 .PHONY: network
-network: ## Cria a rede Docker compartilhada (idempotente)
+network: ## Create the shared Docker network (idempotent)
 	@docker network inspect $(NETWORK) >/dev/null 2>&1 \
-		|| { echo "🌐 Criando rede $(NETWORK)..."; docker network create $(NETWORK); }
+		|| { echo "Creating network $(NETWORK)..."; docker network create $(NETWORK); }
 
 .PHONY: blockchain
-blockchain: network ## Sobe só a rede Hyperledger Fabric (gera cripto, canal, chaincode)
-	@echo "🔗 Subindo a rede Fabric..."
+blockchain: network ## Bring up only the Hyperledger Fabric network (generates crypto, channel, chaincode)
+	@echo "Bringing up the Fabric network..."
 	@cd $(FABRIC_DIR) && yes n | ./start-network.sh
 
 .PHONY: api
-api: network ## Sobe só a API (build + MongoDB + Redis + API)
-	@echo "🚀 Subindo a API..."
+api: network ## Bring up only the API (build + MongoDB + Redis + API)
+	@echo "Bringing up the API..."
 	@cd $(API_DIR) && docker compose up -d --build
 
 .PHONY: dev
-dev: network ## Sobe só MongoDB + Redis (para rodar a API nativamente / testes)
+dev: network ## Bring up only MongoDB + Redis (to run the API natively / for tests)
 	@cd $(API_DIR) && docker compose up -d mongodb redis
-	@echo "MongoDB e Redis no ar. Rode a API com: make run"
+	@echo "MongoDB and Redis are up. Run the API with: make run"
 
 .PHONY: api-logs
-api-logs: ## Segue os logs da API
+api-logs: ## Follow the API logs
 	@cd $(API_DIR) && docker compose logs -f go-api
 
 .PHONY: blockchain-logs
-blockchain-logs: ## Segue os logs do CLI do Fabric (setup de canal/chaincode)
+blockchain-logs: ## Follow the Fabric CLI logs (channel/chaincode setup)
 	@docker logs -f cli
 
 # ----------------------------------------------------------------------------
-# Desenvolvimento nativo (sem Docker para a API)
+# Native development (no Docker for the API)
 # ----------------------------------------------------------------------------
 
 .PHONY: build
-build: ## Compila a API nativamente
+build: ## Build the API natively
 	@cd $(API_DIR) && go build ./...
 
 .PHONY: run
-run: ## Roda a API nativamente (precisa de MongoDB no ar — ver `make dev`)
+run: ## Run the API natively (requires MongoDB up — see `make dev`)
 	@cd $(API_DIR) && go run ./cmd/api
 
 .PHONY: test
-test: ## Roda os testes Go da API
+test: ## Run the API Go tests
 	@cd $(API_DIR) && go test ./...
 
 .PHONY: vet
-vet: ## Roda go vet na API
+vet: ## Run go vet on the API
 	@cd $(API_DIR) && go vet ./...
 
 # ----------------------------------------------------------------------------
-# Limpeza
+# Cleanup
 # ----------------------------------------------------------------------------
 
 .PHONY: clean
-clean: ## Para tudo e REMOVE os volumes (apaga dados do Mongo/Redis/WAL)
+clean: ## Stop everything and REMOVE the volumes (deletes Mongo/Redis/WAL data)
 	-cd $(API_DIR) && docker compose down -v
 	-cd $(FABRIC_DIR) && docker-compose down -v
 	-docker network rm $(NETWORK) 2>/dev/null || true
 
 .PHONY: clean-blockchain
-clean-blockchain: ## Reset completo da rede Fabric (recria cripto e artefatos)
+clean-blockchain: ## Full reset of the Fabric network (recreates crypto and artifacts)
 	@cd $(FABRIC_DIR) && yes n | ./start-network.sh --clean

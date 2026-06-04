@@ -23,15 +23,15 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}[OK] $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    echo -e "${YELLOW}[WARNING] $1${NC}"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+    echo -e "${BLUE}[INFO] $1${NC}"
 }
 
 # Script directory
@@ -40,8 +40,8 @@ cd "$SCRIPT_DIR"
 
 # Check the --clean option
 if [ "$1" == "--clean" ]; then
-    print_warning "WARNING: --clean mode will remove ALL volumes!"
-    print_warning "All blockchain data will be LOST!"
+    print_warning "The --clean mode will remove ALL volumes."
+    print_warning "All blockchain data will be lost."
     echo ""
     read -p "Are you sure you want to continue? (y/N): " -n 1 -r
     echo ""
@@ -74,4 +74,4 @@ else
 fi
 
 echo ""
-print_success "Fabric network stopped successfully!"
+print_success "Fabric network stopped successfully"
