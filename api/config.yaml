@@ -42,6 +42,12 @@ fabric:
   sync_max_workers: 10
   invoke_timeout: 30s
   query_timeout: 10s
+  # Connection details for the docker-exec transport (parameterized so the API
+  # is not tied to the dev container names / cert paths).
+  peer_container: "peer0.org1.example.com"
+  orderer_address: "orderer.example.com:7050"
+  orderer_tls_ca_file: "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
+  tls_enabled: true
 
 wal:
   enabled: true

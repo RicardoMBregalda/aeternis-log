@@ -157,5 +157,81 @@ func TestStoreMerkleBatch(t *testing.T) {
 	}
 }
 
+func argValue(args []string, flag string) (string, bool) {
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == flag {
+			return args[i+1], true
+		}
+	}
+	return "", false
+}
+
+func argsContain(args []string, s string) bool {
+	for _, a := range args {
+		if a == s {
+			return true
+		}
+	}
+	return false
+}
+
+// TestInvokeArgsFromConfig verifies the invoke command is built from config
+// rather than hardcoded container names/paths.
+func TestInvokeArgsFromConfig(t *testing.T) {
+	cfg := &config.FabricConfig{
+		Channel:          "ch",
+		Chaincode:        "cc",
+		PeerContainer:    "my-peer",
+		OrdererAddress:   "my-orderer:7050",
+		OrdererTLSCAFile: "/certs/ca.pem",
+		TLSEnabled:       true,
+	}
+	args := NewFabricClient(cfg).invokeArgs("fn", []string{"a"})
+
+	if len(args) < 2 || args[0] != "exec" || args[1] != "my-peer" {
+		t.Fatalf("expected exec against configured peer, got %v", args[:min(2, len(args))])
+	}
+	if v, ok := argValue(args, "-o"); !ok || v != "my-orderer:7050" {
+		t.Errorf("orderer address: got %q (ok=%v)", v, ok)
+	}
+	if v, ok := argValue(args, "-C"); !ok || v != "ch" {
+		t.Errorf("channel: got %q", v)
+	}
+	if v, ok := argValue(args, "--cafile"); !ok || v != "/certs/ca.pem" {
+		t.Errorf("cafile: got %q", v)
+	}
+	if !argsContain(args, "--tls") {
+		t.Error("expected --tls when TLSEnabled is true")
+	}
+}
+
+// TestInvokeArgsNoTLS verifies TLS flags are omitted when TLS is disabled.
+func TestInvokeArgsNoTLS(t *testing.T) {
+	cfg := &config.FabricConfig{Channel: "ch", Chaincode: "cc", PeerContainer: "p", TLSEnabled: false}
+	args := NewFabricClient(cfg).invokeArgs("fn", nil)
+	if argsContain(args, "--tls") || argsContain(args, "--cafile") {
+		t.Errorf("did not expect TLS flags when TLSEnabled is false: %v", args)
+	}
+}
+
+// TestQueryArgsFromConfig verifies the query command targets the configured peer.
+func TestQueryArgsFromConfig(t *testing.T) {
+	cfg := &config.FabricConfig{Channel: "ch", Chaincode: "cc", PeerContainer: "qpeer"}
+	args := NewFabricClient(cfg).queryArgs("fn", nil)
+	if len(args) < 2 || args[1] != "qpeer" {
+		t.Fatalf("expected exec against configured peer, got %v", args)
+	}
+	if !argsContain(args, "query") {
+		t.Error("expected the query subcommand")
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // Note: Integration tests that actually call docker/Fabric should be in
 // a separate integration test suite with proper Fabric network setup
