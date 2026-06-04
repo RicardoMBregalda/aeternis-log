@@ -1,24 +1,24 @@
 #!/bin/bash
 
-# Define o binário do configtxgen e cryptogen
+# Set the path to the configtxgen and cryptogen binaries
 export PATH=${PWD}/bin:$PATH
 export FABRIC_CFG_PATH=${PWD}
 
-# Limpa artefatos antigos para garantir uma geração limpa
+# Clean up old artifacts to ensure a fresh generation
 rm -rf crypto-config
 rm -rf config
 mkdir config
 
-# Gera o material criptográfico (certificados e chaves)
-echo "####### Gerando material criptográfico usando cryptogen... #######"
+# Generate the cryptographic material (certificates and keys)
+echo "####### Generating cryptographic material using cryptogen... #######"
 cryptogen generate --config=./crypto-config.yaml
 
-# Gera o bloco gênesis do serviço de ordenação
-echo "####### Gerando o Bloco Gênesis... #######"
+# Generate the orderer service genesis block
+echo "####### Generating the Genesis Block... #######"
 configtxgen -profile OneOrgOrdererGenesis -outputBlock ./config/genesis.block -channelID system-channel
 
-# Gera a transação de criação do canal
-echo "####### Gerando a transação de criação do canal... #######"
+# Generate the channel creation transaction
+echo "####### Generating the channel creation transaction... #######"
 configtxgen -profile OneOrgChannel -outputCreateChannelTx ./config/logchannel.tx -channelID logchannel
 
-echo "####### Geração de artefatos concluída! #######"
+echo "####### Artifact generation complete! #######"
