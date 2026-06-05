@@ -102,6 +102,15 @@ type FabricConfig struct {
 	OrdererAddress   string `yaml:"orderer_address"`
 	OrdererTLSCAFile string `yaml:"orderer_tls_ca_file"`
 	TLSEnabled       bool   `yaml:"tls_enabled"`
+
+	// Gateway transport settings (used when Transport == "gateway"). The
+	// identity is an X.509 enrollment (cert + private key) from the org MSP.
+	MSPID                     string `yaml:"msp_id"`
+	GatewayPeerEndpoint       string `yaml:"gateway_peer_endpoint"`
+	GatewayPeerTLSCAFile      string `yaml:"gateway_peer_tls_ca_file"`
+	GatewayServerNameOverride string `yaml:"gateway_server_name_override"`
+	IdentityCertFile          string `yaml:"identity_cert_file"`
+	IdentityKeyDir            string `yaml:"identity_key_dir"`
 }
 
 // WALConfig holds Write-Ahead Log configuration
@@ -203,6 +212,9 @@ func LoadConfig(configPath string) (*Config, error) {
 			OrdererAddress:   "orderer.example.com:7050",
 			OrdererTLSCAFile: "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem",
 			TLSEnabled:       true,
+			MSPID:                     "Org1MSP",
+			GatewayPeerEndpoint:       "peer0.org1.example.com:7051",
+			GatewayServerNameOverride: "peer0.org1.example.com",
 		},
 		WAL: WALConfig{
 			Enabled:         true,
@@ -372,6 +384,24 @@ func overrideFromEnv(config *Config) {
 	if val := os.Getenv("FABRIC_TLS_ENABLED"); val != "" {
 		config.Fabric.TLSEnabled = val == "true"
 	}
+	if val := os.Getenv("FABRIC_MSP_ID"); val != "" {
+		config.Fabric.MSPID = val
+	}
+	if val := os.Getenv("FABRIC_GATEWAY_PEER_ENDPOINT"); val != "" {
+		config.Fabric.GatewayPeerEndpoint = val
+	}
+	if val := os.Getenv("FABRIC_GATEWAY_PEER_TLS_CA_FILE"); val != "" {
+		config.Fabric.GatewayPeerTLSCAFile = val
+	}
+	if val := os.Getenv("FABRIC_GATEWAY_SERVER_NAME_OVERRIDE"); val != "" {
+		config.Fabric.GatewayServerNameOverride = val
+	}
+	if val := os.Getenv("FABRIC_IDENTITY_CERT_FILE"); val != "" {
+		config.Fabric.IdentityCertFile = val
+	}
+	if val := os.Getenv("FABRIC_IDENTITY_KEY_DIR"); val != "" {
+		config.Fabric.IdentityKeyDir = val
+	}
 
 	// WAL
 	if val := os.Getenv("WAL_ENABLED"); val != "" {
@@ -493,11 +523,20 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid fabric transport: %q (docker-exec|gateway)", c.Fabric.Transport)
 	}
 	if c.Fabric.SyncEnabled {
-		if c.Fabric.PeerContainer == "" {
-			return fmt.Errorf("fabric peer_container is required when sync is enabled")
-		}
-		if c.Fabric.TLSEnabled && c.Fabric.OrdererTLSCAFile == "" {
-			return fmt.Errorf("fabric orderer_tls_ca_file is required when tls is enabled")
+		switch c.Fabric.Transport {
+		case "", "docker-exec":
+			if c.Fabric.PeerContainer == "" {
+				return fmt.Errorf("fabric peer_container is required for the docker-exec transport")
+			}
+			if c.Fabric.TLSEnabled && c.Fabric.OrdererTLSCAFile == "" {
+				return fmt.Errorf("fabric orderer_tls_ca_file is required when tls is enabled")
+			}
+		case "gateway":
+			if c.Fabric.MSPID == "" || c.Fabric.GatewayPeerEndpoint == "" ||
+				c.Fabric.GatewayPeerTLSCAFile == "" || c.Fabric.IdentityCertFile == "" ||
+				c.Fabric.IdentityKeyDir == "" {
+				return fmt.Errorf("fabric gateway transport requires msp_id, gateway_peer_endpoint, gateway_peer_tls_ca_file, identity_cert_file and identity_key_dir")
+			}
 		}
 	}
 

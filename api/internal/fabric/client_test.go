@@ -32,17 +32,21 @@ func TestNewFabricClient(t *testing.T) {
 }
 
 func TestNewFabricClientTransport(t *testing.T) {
-	// Unknown transport is rejected.
-	if _, err := NewFabricClient(&config.FabricConfig{Transport: "bogus"}); err == nil {
+	// Disabled sync constructs cleanly regardless of transport (no backend).
+	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: false, Transport: "gateway"}); err != nil {
+		t.Errorf("disabled sync should not construct a backend: %v", err)
+	}
+	// Unknown transport is rejected when sync is enabled.
+	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: true, Transport: "bogus"}); err == nil {
 		t.Error("expected error for unknown transport")
 	}
-	// Gateway is recognized but not implemented yet.
-	if _, err := NewFabricClient(&config.FabricConfig{Transport: "gateway"}); err == nil {
-		t.Error("expected not-implemented error for gateway transport")
+	// Gateway with no identity/cert configured fails to construct.
+	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: true, Transport: "gateway"}); err == nil {
+		t.Error("expected error for gateway with missing identity/cert config")
 	}
-	// Empty transport defaults to docker-exec.
-	if _, err := NewFabricClient(&config.FabricConfig{}); err != nil {
-		t.Errorf("empty transport should default to docker-exec, got %v", err)
+	// Empty transport with sync enabled defaults to docker-exec.
+	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: true}); err != nil {
+		t.Errorf("empty transport should default to docker-exec: %v", err)
 	}
 }
 
