@@ -10,6 +10,7 @@ import (
 // Tamper-Evident Data Anchoring pattern. A Log is just a Record in the "logs"
 // domain; any client can anchor arbitrary records under their own domain.
 type Record struct {
+	Tenant    string                 `json:"tenant" bson:"tenant"`
 	Domain    string                 `json:"domain" bson:"domain"`
 	ID        string                 `json:"id" bson:"id"`
 	Timestamp string                 `json:"timestamp" bson:"timestamp"`
@@ -110,6 +111,7 @@ func CalculateRecordMerkleRoot(records []*Record) (string, []string) {
 // RecordBatchResult describes a Merkle batch of records anchored to Fabric.
 type RecordBatchResult struct {
 	BatchID    string `json:"batch_id"`
+	Tenant     string `json:"tenant"`
 	Domain     string `json:"domain"`
 	MerkleRoot string `json:"merkle_root"`
 	NumRecords int    `json:"num_records"`

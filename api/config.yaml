@@ -106,8 +106,15 @@ auth:
   enabled: false
   header_name: "X-API-Key"
   api_keys: []
-  # api_keys:
+  # api_keys (flat keys belong to tenant "default"):
   #   - "replace-with-a-strong-random-key"
+  # Multi-tenancy: keys under a tenant resolve to that tenant; records are
+  # isolated per (tenant, domain).
+  # tenants:
+  #   - id: "acme"
+  #     keys: ["acme-key-1"]
+  #   - id: "globex"
+  #     keys: ["globex-key-1"]
 
 # Per-client-IP rate limiting (in-memory, per instance).
 rate_limit:

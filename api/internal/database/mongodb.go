@@ -140,20 +140,21 @@ func (mc *MongoClient) CreateIndexes(ctx context.Context) error {
 	recordsCollection := mc.Database.Collection(mc.Config.RecordsCollection)
 	recordsIndexes := []mongo.IndexModel{
 		{
-			// Unique per domain: the same id can exist in different domains.
-			Keys:    bson.D{{Key: "domain", Value: 1}, {Key: "id", Value: 1}},
+			// Unique per (tenant, domain): the same id can exist across tenants/domains.
+			Keys:    bson.D{{Key: "tenant", Value: 1}, {Key: "domain", Value: 1}, {Key: "id", Value: 1}},
 			Options: options.Index().SetUnique(true),
 		},
 		{
-			// Supports domain-scoped listing and (created_at, id) keyset pagination.
+			// Tenant+domain-scoped listing and (created_at, id) keyset pagination.
 			Keys: bson.D{
+				{Key: "tenant", Value: 1},
 				{Key: "domain", Value: 1},
 				{Key: "created_at", Value: -1},
 				{Key: "id", Value: -1},
 			},
 		},
 		{
-			Keys: bson.D{{Key: "domain", Value: 1}, {Key: "batch_id", Value: 1}},
+			Keys: bson.D{{Key: "tenant", Value: 1}, {Key: "domain", Value: 1}, {Key: "batch_id", Value: 1}},
 		},
 	}
 	if _, err := recordsCollection.Indexes().CreateMany(ctx, recordsIndexes); err != nil {

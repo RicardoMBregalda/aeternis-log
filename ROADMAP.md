@@ -8,7 +8,7 @@
 | Fase | Concluído | Progresso |
 |------|-----------|-----------|
 | Fase 1 — Estabilização Técnica | 8 ✅ de 8 | `▓▓▓▓▓▓▓▓` |
-| Fase 2 — Generalização do Domínio | 5 de 7 | `▓▓▓▓▓░░` |
+| Fase 2 — Generalização do Domínio | 6 de 7 | `▓▓▓▓▓▓░` |
 | Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
 | Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
 
@@ -102,14 +102,14 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **Env vars para configs hardcoded do Fabric** — `peer_container`, `orderer_address`, `orderer_tls_ca_file`, `tls_enabled` na `FabricConfig` (env `FABRIC_*`), com validação. `client.go` constrói os args do `docker exec` a partir da config (`invokeArgs`/`queryArgs`, testáveis); zero nomes/paths fixos. _(ver changelog)_
 - [x] **Rate limiting** — `middleware.RateLimiter` conectado em `cmd/api/main.go` via config `rate_limit` (opt-in, por IP, com env overrides). _Nota:_ in-memory por instância; um limiter compartilhado em Redis é o follow-up para multi-instância. _(ver changelog)_
 
-### Fase 2 — Generalização do Domínio (2-3 meses) — `5 de 7`
+### Fase 2 — Generalização do Domínio (2-3 meses) — `6 de 7`
 
 **Objetivo:** Remover o acoplamento ao domínio de "logs" para suportar qualquer tipo de registro auditável.
 
 - [x] **Abstrair `Log` para `Record`** — modelo genérico `models.Record` (`domain`, `id`, `timestamp`, `source`, `payload` JSON livre, `hash` + campos de auditoria); collection `records` escopada por domínio. _(ver changelog)_
 - [x] **`CalculateHash` configurável** — hash SHA-256 sobre `id|timestamp|source|payload canônico`; `hash_fields` opcional escolhe quais chaves do payload entram no hash (guardado no record p/ reprodutibilidade); payload canônico com chaves ordenadas (independe da ordem). _(ver changelog)_
 - [x] **Rotas `/api/v1/{domain}/records`** — CRUD genérico (create/list+cursor/get/delete soft) sob namespace de domínio, protegido pela auth. **Aditivo:** `/logs` mantido (não renomeado) para não quebrar o fluxo validado. _(ver changelog)_
-- [ ] Multi-tenancy: cada cliente/organização tem seu próprio channel no Fabric e collection no MongoDB
+- [x] **Multi-tenancy** — o tenant é resolvido pela API key (`auth.tenants: [{id, keys}]`; `api_keys` planas → `default`) e posto no contexto; records isolados por `(tenant, domain)` em todas as operações + ancoragem (batch ID namespaced por tenant). _(ver changelog)_ ⚠️ Isolamento de storage por **campo `tenant`** (não collection-por-tenant) e **mesmo channel** Fabric — o channel-por-org depende da rede de produção (item abaixo).
 - [ ] Configurar rede Fabric de produção: mínimo 3 orgs, consenso Raft com 3 orderers, CAs separadas
 - [x] **Webhook/callback ao ancorar** — pacote `internal/webhook`: ao ancorar um batch (logs ou records), dispara `POST` do evento `batch.anchored` (domain, batch_id, merkle_root, num_records, tx_id, anchored_at) para `webhook.url`, assinado com HMAC-SHA256 (`X-Webhook-Signature`) quando há `secret`; entrega assíncrona com retries. Opt-in via `webhook.enabled`. _(ver changelog)_
 - [x] **SDK cliente em Go** — módulo `sdk/go` (pacote `anchor`, só stdlib): `Client` com retry automático (network/5xx) + métodos CRUD/batch/verify; **verificação de integridade local** (`ComputeHash`/`MerkleRoot`/`VerifyRecordsLocally`) que recalcula independente do servidor (no create, checa que o hash do servidor == hash local). _(ver changelog)_
@@ -166,6 +166,16 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-05 — Fase 2: multi-tenancy (isolamento por API key)
+
+Cada cliente (tenant) é resolvido pela API key e só enxerga os próprios records.
+
+- **Auth tenant-aware:** `auth.tenants: [{id, keys}]` (chaves planas `api_keys` → tenant `default`); `AuthConfig.KeyToTenant()` monta o mapa key→tenant. O middleware `APIKeyAuth` resolve o tenant (constant-time) e o põe no contexto (`tenant`).
+- **Records isolados por `(tenant, domain)`:** novo campo `Record.Tenant`; todas as operações (create/get/list/delete/batch/verify) filtram por tenant (do contexto, não da URL). Índice único `(tenant, domain, id)` + índice de cursor `(tenant, domain, created_at, id)`. Sem auth, tudo cai no tenant `default` (aditivo).
+- **Ancoragem por tenant:** `ProcessRecordBatch`/`VerifyRecordBatch` recebem tenant; auto-batch itera scopes `(tenant, domain)` (`DistinctPendingRecordScopes`); batch ID namespaced `tenant-domain-uuid`; evento de webhook ganhou `tenant`.
+- Testes: `database.TestRecordsCRUD` (isolamento tenant + domain), `middleware.TestAPIKeyAuth`/`TestMatchAPIKey` (resolução de tenant). **E2E ao vivo (2 tenants):** globex lendo record do acme → 404; cada um lista só os próprios records no mesmo domínio. `go build`/`vet`/`test ./...` limpos.
+- ⚠️ **Escopo:** isolamento de storage por campo `tenant` (não collection-por-tenant) e **mesmo channel** Fabric. O channel-por-org depende da rede Fabric de produção (3 orgs) — único item restante da Fase 2.
 
 ### 2026-06-05 — Fase 2: SDK cliente Go (`anchor`) com verificação local
 

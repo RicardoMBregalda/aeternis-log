@@ -93,10 +93,11 @@ func RateLimiter(maxRequests int, window time.Duration) gin.HandlerFunc {
 	}
 }
 
-// APIKeyAuth authenticates requests against a set of accepted API keys. The key
-// may be sent in the configured header (e.g. X-API-Key) or as a Bearer token in
-// the Authorization header. Keys are compared in constant time.
-func APIKeyAuth(headerName string, keys []string) gin.HandlerFunc {
+// APIKeyAuth authenticates requests against the configured API keys and resolves
+// the caller's tenant. The key may be sent in the configured header (e.g.
+// X-API-Key) or as a Bearer token in the Authorization header. On success the
+// tenant is stored in the context ("tenant"). Keys are compared in constant time.
+func APIKeyAuth(headerName string, keyToTenant map[string]string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		presented := c.GetHeader(headerName)
 		if presented == "" {
@@ -105,7 +106,8 @@ func APIKeyAuth(headerName string, keys []string) gin.HandlerFunc {
 			}
 		}
 
-		if presented == "" || !matchAPIKey(presented, keys) {
+		tenant, ok := matchAPIKey(presented, keyToTenant)
+		if presented == "" || !ok {
 			c.JSON(http.StatusUnauthorized, models.ErrorResponse{
 				Error:   "unauthorized",
 				Message: "missing or invalid API key",
@@ -115,21 +117,24 @@ func APIKeyAuth(headerName string, keys []string) gin.HandlerFunc {
 			return
 		}
 
+		c.Set("tenant", tenant)
 		c.Next()
 	}
 }
 
-// matchAPIKey reports whether presented matches any accepted key. It checks
-// every key (no early return) and uses a constant-time comparison so the
-// response timing does not leak key contents.
-func matchAPIKey(presented string, keys []string) bool {
+// matchAPIKey returns the tenant for a presented key. It checks every key (no
+// early return) and uses a constant-time comparison so the response timing does
+// not leak key contents.
+func matchAPIKey(presented string, keyToTenant map[string]string) (string, bool) {
+	tenant := ""
 	match := false
-	for _, k := range keys {
-		if subtle.ConstantTimeCompare([]byte(presented), []byte(k)) == 1 {
+	for key, t := range keyToTenant {
+		if subtle.ConstantTimeCompare([]byte(presented), []byte(key)) == 1 {
+			tenant = t
 			match = true
 		}
 	}
-	return match
+	return tenant, match
 }
 
 // Timeout middleware adds a timeout to requests

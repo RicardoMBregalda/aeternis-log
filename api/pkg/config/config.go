@@ -43,6 +43,29 @@ type AuthConfig struct {
 	Enabled    bool     `yaml:"enabled"`
 	HeaderName string   `yaml:"header_name"`
 	APIKeys    []string `yaml:"api_keys"`
+	// Tenants maps API keys to tenants for multi-tenant isolation. Keys under a
+	// tenant resolve to that tenant; the flat api_keys above resolve to "default".
+	Tenants []TenantKeys `yaml:"tenants"`
+}
+
+// TenantKeys associates a tenant id with its API keys.
+type TenantKeys struct {
+	ID   string   `yaml:"id"`
+	Keys []string `yaml:"keys"`
+}
+
+// KeyToTenant builds a lookup from API key to tenant id.
+func (a *AuthConfig) KeyToTenant() map[string]string {
+	m := make(map[string]string)
+	for _, k := range a.APIKeys {
+		m[k] = "default"
+	}
+	for _, t := range a.Tenants {
+		for _, k := range t.Keys {
+			m[k] = t.ID
+		}
+	}
+	return m
 }
 
 // RateLimitConfig holds per-client-IP rate limiting configuration.
@@ -623,8 +646,13 @@ func (c *Config) Validate() error {
 
 	// Validate auth
 	if c.Auth.Enabled {
-		if len(c.Auth.APIKeys) == 0 {
-			return fmt.Errorf("auth is enabled but no api_keys are configured")
+		if len(c.Auth.APIKeys) == 0 && len(c.Auth.Tenants) == 0 {
+			return fmt.Errorf("auth is enabled but no api_keys or tenants are configured")
+		}
+		for _, t := range c.Auth.Tenants {
+			if t.ID == "" || len(t.Keys) == 0 {
+				return fmt.Errorf("each auth tenant requires an id and at least one key")
+			}
 		}
 		if c.Auth.HeaderName == "" {
 			return fmt.Errorf("auth header_name is required when auth is enabled")

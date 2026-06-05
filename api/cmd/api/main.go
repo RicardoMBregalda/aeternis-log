@@ -186,10 +186,12 @@ func main() {
 	// API key authentication for protected routes (nil when disabled).
 	var authMW gin.HandlerFunc
 	if cfg.Auth.Enabled {
-		authMW = middleware.APIKeyAuth(cfg.Auth.HeaderName, cfg.Auth.APIKeys)
+		keyToTenant := cfg.Auth.KeyToTenant()
+		authMW = middleware.APIKeyAuth(cfg.Auth.HeaderName, keyToTenant)
 		lg.Info().
 			Str("header", cfg.Auth.HeaderName).
-			Int("keys", len(cfg.Auth.APIKeys)).
+			Int("keys", len(keyToTenant)).
+			Int("tenants", len(cfg.Auth.Tenants)).
 			Msg("API key authentication enabled")
 	} else {
 		lg.Warn().Msg("API authentication disabled (all requests accepted)")

@@ -76,11 +76,12 @@ func (bp *BatchProcessor) SetNotifier(n *webhook.Notifier) {
 }
 
 // notifyAnchored fires the batch-anchored webhook (best-effort, async).
-func (bp *BatchProcessor) notifyAnchored(domain, batchID, merkleRoot string, numRecords int, txID string) {
+func (bp *BatchProcessor) notifyAnchored(tenant, domain, batchID, merkleRoot string, numRecords int, txID string) {
 	if bp.notifier == nil {
 		return
 	}
 	bp.notifier.NotifyBatchAnchored(webhook.BatchAnchoredEvent{
+		Tenant:     tenant,
 		Domain:     domain,
 		BatchID:    batchID,
 		MerkleRoot: merkleRoot,
@@ -187,11 +188,11 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 				// Queue is full, skip this tick
 			}
 
-			// Auto-batch pending records per domain (each anchored to Fabric).
-			if domains, err := bp.collections.DistinctPendingRecordDomains(ctx); err == nil {
-				for _, d := range domains {
-					if _, err := bp.ProcessRecordBatch(ctx, d, bp.config.AutoBatchSize); err != nil {
-						zlog.Error().Err(err).Str("domain", d).Msg("record auto-batch error")
+			// Auto-batch pending records per (tenant, domain); each anchored to Fabric.
+			if scopes, err := bp.collections.DistinctPendingRecordScopes(ctx); err == nil {
+				for _, s := range scopes {
+					if _, err := bp.ProcessRecordBatch(ctx, s.Tenant, s.Domain, bp.config.AutoBatchSize); err != nil {
+						zlog.Error().Err(err).Str("tenant", s.Tenant).Str("domain", s.Domain).Msg("record auto-batch error")
 					}
 				}
 			}
@@ -278,7 +279,7 @@ func (bp *BatchProcessor) processBatch(ctx context.Context, batchSize int) error
 			return fmt.Errorf("failed to update sync status: %w", err)
 		}
 
-		bp.notifyAnchored("logs", batchID, merkleRoot, len(logs), inv.TxID)
+		bp.notifyAnchored("default", "logs", batchID, merkleRoot, len(logs), inv.TxID)
 	}
 
 	// Update statistics
@@ -367,13 +368,13 @@ func (bp *BatchProcessor) GetBatch(ctx context.Context, batchID string) (*models
 // ProcessRecordBatch batches up to batchSize pending records in a domain,
 // anchors the Merkle root to Fabric, and stamps the records. Returns a nil
 // result with no error when there is nothing to batch.
-func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, domain string, batchSize int) (*models.RecordBatchResult, error) {
+func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, tenant, domain string, batchSize int) (*models.RecordBatchResult, error) {
 	startTime := time.Now()
 	if batchSize <= 0 {
 		batchSize = bp.config.AutoBatchSize
 	}
 
-	records, err := bp.collections.FindRecordsWithoutBatch(ctx, domain, batchSize)
+	records, err := bp.collections.FindRecordsWithoutBatch(ctx, tenant, domain, batchSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find records: %w", err)
 	}
@@ -381,7 +382,7 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, domain string,
 		return nil, nil
 	}
 
-	batchID := fmt.Sprintf("%s-%s", domain, uuid.New().String()[:8])
+	batchID := fmt.Sprintf("%s-%s-%s", tenant, domain, uuid.New().String()[:8])
 	merkleRoot, _ := models.CalculateRecordMerkleRoot(records)
 
 	recordIDs := make([]string, len(records))
@@ -389,12 +390,13 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, domain string,
 		recordIDs[i] = r.ID
 	}
 
-	if err := bp.collections.UpdateRecordBatch(ctx, domain, recordIDs, batchID, merkleRoot); err != nil {
+	if err := bp.collections.UpdateRecordBatch(ctx, tenant, domain, recordIDs, batchID, merkleRoot); err != nil {
 		return nil, fmt.Errorf("failed to stamp records: %w", err)
 	}
 
 	result := &models.RecordBatchResult{
 		BatchID:    batchID,
+		Tenant:     tenant,
 		Domain:     domain,
 		MerkleRoot: merkleRoot,
 		NumRecords: len(records),
@@ -411,12 +413,13 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, domain string,
 		}
 		result.TxID = inv.TxID
 		result.Anchored = true
-		bp.notifyAnchored(domain, batchID, merkleRoot, len(records), inv.TxID)
+		bp.notifyAnchored(tenant, domain, batchID, merkleRoot, len(records), inv.TxID)
 	}
 
 	bp.updateStats(batchID, len(records), startTime)
 	zlog.Info().
 		Str("batch_id", batchID).
+		Str("tenant", tenant).
 		Str("domain", domain).
 		Int("records", len(records)).
 		Str("merkle_root", merkleRoot).
@@ -429,13 +432,13 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, domain string,
 
 // VerifyRecordBatch recomputes a record batch's Merkle root from current content
 // and compares it with the root anchored at creation.
-func (bp *BatchProcessor) VerifyRecordBatch(ctx context.Context, domain, batchID string) (*models.VerifyBatchResponse, error) {
-	records, err := bp.collections.FindRecordsByBatchID(ctx, domain, batchID)
+func (bp *BatchProcessor) VerifyRecordBatch(ctx context.Context, tenant, domain, batchID string) (*models.VerifyBatchResponse, error) {
+	records, err := bp.collections.FindRecordsByBatchID(ctx, tenant, domain, batchID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find records: %w", err)
 	}
 	if len(records) == 0 {
-		return nil, fmt.Errorf("batch not found: %s/%s", domain, batchID)
+		return nil, fmt.Errorf("batch not found: %s/%s/%s", tenant, domain, batchID)
 	}
 
 	original := records[0].MerkleRoot

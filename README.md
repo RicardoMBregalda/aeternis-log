@@ -133,6 +133,8 @@ curl -H 'Authorization: Bearer key-a' http://localhost:5001/logs
 
 Rate limiting is in-memory **per instance**; a Redis-backed shared limiter is the follow-up for multi-instance deployments.
 
+**Multi-tenancy:** map API keys to tenants via `auth.tenants` (`[{id, keys}]`); flat `api_keys` belong to tenant `default`. The caller's tenant is resolved from its key, and records are isolated per `(tenant, domain)` — a key for tenant A cannot read tenant B's records. (Per-org Fabric channels are a production-network follow-up; today tenants anchor to the same channel, namespaced by tenant in the batch id.)
+
 ## Configuration
 
 The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`, `auth`, `rate_limit`.
