@@ -10,6 +10,7 @@ import (
 
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/database"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/logger"
+	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/merkle"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -21,12 +22,13 @@ import (
 // RecordHandler handles generic, domain-scoped record requests under
 // /api/v1/{domain}/records. A Log is just a Record in the "logs" domain.
 type RecordHandler struct {
-	collections *database.Collections
+	collections    *database.Collections
+	batchProcessor *merkle.BatchProcessor
 }
 
 // NewRecordHandler creates a new record handler.
-func NewRecordHandler(collections *database.Collections) *RecordHandler {
-	return &RecordHandler{collections: collections}
+func NewRecordHandler(collections *database.Collections, batchProcessor *merkle.BatchProcessor) *RecordHandler {
+	return &RecordHandler{collections: collections, batchProcessor: batchProcessor}
 }
 
 // CreateRecord handles POST /api/v1/{domain}/records
@@ -269,4 +271,85 @@ func (h *RecordHandler) DeleteRecord(c *gin.Context) {
 		Message: "Record soft-deleted (audit trail preserved)",
 		Data:    gin.H{"domain": domain, "id": id, "soft_deleted": true},
 	})
+}
+
+// ForceRecordBatch handles POST /api/v1/{domain}/records/batch
+// @Summary Batch and anchor pending records
+// @Description Batch up to batch_size pending records in the domain, compute the Merkle root and anchor it to Fabric
+// @Tags Records
+// @Accept json
+// @Produce json
+// @Param domain path string true "Domain"
+// @Param request body models.CreateBatchRequest false "Batch configuration"
+// @Success 200 {object} models.RecordBatchResult
+// @Failure 500 {object} models.ErrorResponse
+// @Router /api/v1/{domain}/records/batch [post]
+func (h *RecordHandler) ForceRecordBatch(c *gin.Context) {
+	domain := c.Param("domain")
+
+	var req models.CreateBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		req.BatchSize = 100
+	}
+	if req.BatchSize <= 0 || req.BatchSize > 1000 {
+		req.BatchSize = 100
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 40*time.Second)
+	defer cancel()
+
+	result, err := h.batchProcessor.ProcessRecordBatch(ctx, domain, req.BatchSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "batch_error",
+			Message: err.Error(),
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	if result == nil {
+		c.JSON(http.StatusOK, models.SuccessResponse{
+			Status:  "success",
+			Message: "No pending records to batch",
+			Data:    gin.H{"domain": domain, "num_records": 0},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// VerifyRecordBatch handles POST /api/v1/{domain}/records/verify/:batchId
+// @Summary Verify a record batch's integrity
+// @Description Recompute the batch Merkle root and compare it with the anchored one
+// @Tags Records
+// @Produce json
+// @Param domain path string true "Domain"
+// @Param batchId path string true "Batch ID"
+// @Success 200 {object} models.VerifyBatchResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 409 {object} models.VerifyBatchResponse
+// @Router /api/v1/{domain}/records/verify/{batchId} [post]
+func (h *RecordHandler) VerifyRecordBatch(c *gin.Context) {
+	domain := c.Param("domain")
+	batchID := c.Param("batchId")
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	result, err := h.batchProcessor.VerifyRecordBatch(ctx, domain, batchID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error:   "not_found",
+			Message: err.Error(),
+			Code:    http.StatusNotFound,
+		})
+		return
+	}
+
+	statusCode := http.StatusOK
+	if !result.IsValid {
+		statusCode = http.StatusConflict // 409 for integrity violation
+	}
+	c.JSON(statusCode, result)
 }

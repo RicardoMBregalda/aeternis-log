@@ -95,6 +95,8 @@ Beyond logs, the API anchors **any** auditable record under a client-chosen doma
 | `GET` | `/api/v1/{domain}/records` | List with filters (`source`) and pagination (`offset` or `cursor`) |
 | `GET` | `/api/v1/{domain}/records/:id` | Fetch by ID |
 | `DELETE` | `/api/v1/{domain}/records/:id` | Soft-delete (audit trail preserved) |
+| `POST` | `/api/v1/{domain}/records/batch` | Batch pending records, compute the Merkle root and anchor it to Fabric |
+| `POST` | `/api/v1/{domain}/records/verify/:batchId` | Verify a batch's integrity (recompute vs the anchored root) |
 
 ```bash
 curl -X POST http://localhost:5001/api/v1/contracts/records \
@@ -104,7 +106,7 @@ curl -X POST http://localhost:5001/api/v1/contracts/records \
 
 The hash is `SHA-256(id | timestamp | source | canonical(payload))`. Optional `hash_fields` restricts which payload keys feed the hash (so other fields can change without breaking it); the canonical payload uses sorted keys, so the hash is independent of key order.
 
-> Records currently store an integrity hash; generalizing the Merkle batching / Fabric anchoring (today log-specific) to records is the next increment.
+Records are batched per domain (automatically, or via `POST .../records/batch`), their Merkle root is anchored on Fabric, and `POST .../records/verify/{batchId}` recomputes the root from current content and compares it with the anchored one — returning `409 CORRUPTED` if anything was tampered.
 
 ## Authentication & rate limiting
 

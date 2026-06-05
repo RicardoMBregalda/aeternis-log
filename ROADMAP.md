@@ -167,6 +167,16 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 
 ## Changelog de Execução
 
+### 2026-06-05 — Fase 2: ancoragem Merkle/Fabric generalizada para records
+
+Fecha o ciclo tamper-evident no domínio genérico (era o follow-up declarado).
+
+- `models.CalculateRecordMerkleRoot` recalcula o hash de cada record (do conteúdo) e constrói o root — recompute (não confia no hash guardado) = tamper-evident.
+- `collections`: `FindRecordsWithoutBatch`/`FindRecordsByBatchID` (ordem determinística `created_at`+`id`), `UpdateRecordBatch`, `DistinctPendingRecordDomains`.
+- `BatchProcessor.ProcessRecordBatch(domain, n)`: agrupa records pendentes do domínio, calcula o Merkle root, **ancora no Fabric** (`StoreMerkleRoot` via gateway, batch ID namespaced por domínio) e carimba os records. `VerifyRecordBatch` recalcula e compara. O auto-batch ticker passou a batelar records por domínio além de logs.
+- API: `POST /api/v1/{domain}/records/batch` (força + ancora) e `POST /api/v1/{domain}/records/verify/{batchId}` (200 VALID / 409 CORRUPTED).
+- **E2E ao vivo:** records no domínio `audit` → batch ancorado no Fabric (tx real, provado consultando o chaincode) → verify **VALID**; após adulterar um record no Mongo, verify **CORRUPTED (409)**. Teste unitário `CalculateRecordMerkleRoot` (determinismo + adulteração). `go build`/`vet`/`test ./...` limpos.
+
 ### 2026-06-05 — Fase 2: abstração Log → Record (genérico + hash configurável + /records)
 
 Início da Fase 2 (generalização do domínio), de forma **aditiva** — `/logs` e o fluxo validado ficam intactos.

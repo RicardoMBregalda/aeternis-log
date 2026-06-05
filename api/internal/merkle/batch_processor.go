@@ -155,7 +155,7 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Submit auto-batch job
+			// Submit auto-batch job for logs.
 			select {
 			case bp.jobQueue <- &BatchJob{
 				BatchSize: bp.config.AutoBatchSize,
@@ -163,6 +163,15 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 			}:
 			default:
 				// Queue is full, skip this tick
+			}
+
+			// Auto-batch pending records per domain (each anchored to Fabric).
+			if domains, err := bp.collections.DistinctPendingRecordDomains(ctx); err == nil {
+				for _, d := range domains {
+					if _, err := bp.ProcessRecordBatch(ctx, d, bp.config.AutoBatchSize); err != nil {
+						zlog.Error().Err(err).Str("domain", d).Msg("record auto-batch error")
+					}
+				}
 			}
 		}
 	}
@@ -328,6 +337,101 @@ func (bp *BatchProcessor) GetBatch(ctx context.Context, batchID string) (*models
 	}
 
 	return response, nil
+}
+
+// ProcessRecordBatch batches up to batchSize pending records in a domain,
+// anchors the Merkle root to Fabric, and stamps the records. Returns a nil
+// result with no error when there is nothing to batch.
+func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, domain string, batchSize int) (*models.RecordBatchResult, error) {
+	startTime := time.Now()
+	if batchSize <= 0 {
+		batchSize = bp.config.AutoBatchSize
+	}
+
+	records, err := bp.collections.FindRecordsWithoutBatch(ctx, domain, batchSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find records: %w", err)
+	}
+	if len(records) == 0 {
+		return nil, nil
+	}
+
+	batchID := fmt.Sprintf("%s-%s", domain, uuid.New().String()[:8])
+	merkleRoot, _ := models.CalculateRecordMerkleRoot(records)
+
+	recordIDs := make([]string, len(records))
+	for i, r := range records {
+		recordIDs[i] = r.ID
+	}
+
+	if err := bp.collections.UpdateRecordBatch(ctx, domain, recordIDs, batchID, merkleRoot); err != nil {
+		return nil, fmt.Errorf("failed to stamp records: %w", err)
+	}
+
+	result := &models.RecordBatchResult{
+		BatchID:    batchID,
+		Domain:     domain,
+		MerkleRoot: merkleRoot,
+		NumRecords: len(records),
+	}
+
+	if bp.fabricClient != nil {
+		fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+
+		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, batchID, merkleRoot, len(records), recordIDs)
+		if err != nil {
+			bp.incrementFailedBatch()
+			return nil, fmt.Errorf("failed to anchor record batch in Fabric: %w", err)
+		}
+		result.TxID = inv.TxID
+		result.Anchored = true
+	}
+
+	bp.updateStats(batchID, len(records), startTime)
+	zlog.Info().
+		Str("batch_id", batchID).
+		Str("domain", domain).
+		Int("records", len(records)).
+		Str("merkle_root", merkleRoot).
+		Bool("anchored", result.Anchored).
+		Dur("took", time.Since(startTime)).
+		Msg("record batch created")
+
+	return result, nil
+}
+
+// VerifyRecordBatch recomputes a record batch's Merkle root from current content
+// and compares it with the root anchored at creation.
+func (bp *BatchProcessor) VerifyRecordBatch(ctx context.Context, domain, batchID string) (*models.VerifyBatchResponse, error) {
+	records, err := bp.collections.FindRecordsByBatchID(ctx, domain, batchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find records: %w", err)
+	}
+	if len(records) == 0 {
+		return nil, fmt.Errorf("batch not found: %s/%s", domain, batchID)
+	}
+
+	original := records[0].MerkleRoot
+	recalculated, _ := models.CalculateRecordMerkleRoot(records)
+	isValid := original == recalculated
+
+	integrity := "VALID"
+	message := "Batch integrity verified successfully"
+	if !isValid {
+		integrity = "CORRUPTED"
+		message = "Batch integrity check failed - Merkle root mismatch"
+	}
+
+	return &models.VerifyBatchResponse{
+		BatchID:                batchID,
+		IsValid:                isValid,
+		NumLogs:                len(records),
+		OriginalMerkleRoot:     original,
+		RecalculatedMerkleRoot: recalculated,
+		Integrity:              integrity,
+		Message:                message,
+	}, nil
 }
 
 // ListBatches lists all batches
