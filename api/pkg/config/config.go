@@ -55,6 +55,7 @@ type MongoDBConfig struct {
 	URL                        string        `yaml:"url"`
 	Database                   string        `yaml:"database"`
 	Collection                 string        `yaml:"collection"`
+	RecordsCollection          string        `yaml:"records_collection"`
 	SyncControlCollection      string        `yaml:"sync_control_collection"`
 	MinPoolSize                int           `yaml:"min_pool_size"`
 	MaxPoolSize                int           `yaml:"max_pool_size"`
@@ -178,6 +179,7 @@ func LoadConfig(configPath string) (*Config, error) {
 			URL:                       "mongodb://localhost:27017",
 			Database:                  "logdb",
 			Collection:                "logs",
+			RecordsCollection:         "records",
 			SyncControlCollection:     "sync_control",
 			MinPoolSize:               10,
 			MaxPoolSize:               100,
@@ -321,6 +323,9 @@ func overrideFromEnv(config *Config) {
 	}
 	if val := os.Getenv("MONGO_COLLECTION"); val != "" {
 		config.MongoDB.Collection = val
+	}
+	if val := os.Getenv("MONGO_RECORDS_COLLECTION"); val != "" {
+		config.MongoDB.RecordsCollection = val
 	}
 	if val := os.Getenv("MONGO_MIN_POOL_SIZE"); val != "" {
 		if size, err := strconv.Atoi(val); err == nil {

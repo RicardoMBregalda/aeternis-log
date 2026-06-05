@@ -8,7 +8,7 @@
 | Fase | Concluído | Progresso |
 |------|-----------|-----------|
 | Fase 1 — Estabilização Técnica | 8 ✅ de 8 | `▓▓▓▓▓▓▓▓` |
-| Fase 2 — Generalização do Domínio | 0 de 7 | `░░░░░░░` |
+| Fase 2 — Generalização do Domínio | 3 de 7 | `▓▓▓░░░░` |
 | Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
 | Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
 
@@ -102,13 +102,13 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **Env vars para configs hardcoded do Fabric** — `peer_container`, `orderer_address`, `orderer_tls_ca_file`, `tls_enabled` na `FabricConfig` (env `FABRIC_*`), com validação. `client.go` constrói os args do `docker exec` a partir da config (`invokeArgs`/`queryArgs`, testáveis); zero nomes/paths fixos. _(ver changelog)_
 - [x] **Rate limiting** — `middleware.RateLimiter` conectado em `cmd/api/main.go` via config `rate_limit` (opt-in, por IP, com env overrides). _Nota:_ in-memory por instância; um limiter compartilhado em Redis é o follow-up para multi-instância. _(ver changelog)_
 
-### Fase 2 — Generalização do Domínio (2-3 meses) — `0 de 7 (não iniciada)`
+### Fase 2 — Generalização do Domínio (2-3 meses) — `3 de 7`
 
 **Objetivo:** Remover o acoplamento ao domínio de "logs" para suportar qualquer tipo de registro auditável.
 
-- [ ] Abstrair `Log` para `Record` com schema flexível — campos obrigatórios: `id`, `timestamp`, `source`, `payload` (qualquer JSON), `hash`
-- [ ] Tornar o `CalculateHash` configurável por schema: o cliente define quais campos entram no hash
-- [ ] Renomear rotas de `/api/v1/logs` para `/api/v1/records` com namespace de domínio (`/api/v1/{domain}/records`)
+- [x] **Abstrair `Log` para `Record`** — modelo genérico `models.Record` (`domain`, `id`, `timestamp`, `source`, `payload` JSON livre, `hash` + campos de auditoria); collection `records` escopada por domínio. _(ver changelog)_
+- [x] **`CalculateHash` configurável** — hash SHA-256 sobre `id|timestamp|source|payload canônico`; `hash_fields` opcional escolhe quais chaves do payload entram no hash (guardado no record p/ reprodutibilidade); payload canônico com chaves ordenadas (independe da ordem). _(ver changelog)_
+- [x] **Rotas `/api/v1/{domain}/records`** — CRUD genérico (create/list+cursor/get/delete soft) sob namespace de domínio, protegido pela auth. **Aditivo:** `/logs` mantido (não renomeado) para não quebrar o fluxo validado. _(ver changelog)_
 - [ ] Multi-tenancy: cada cliente/organização tem seu próprio channel no Fabric e collection no MongoDB
 - [ ] Configurar rede Fabric de produção: mínimo 3 orgs, consenso Raft com 3 orderers, CAs separadas
 - [ ] Webhook/callback quando um batch é ancorado na blockchain (para integrações externas)
@@ -166,6 +166,17 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-05 — Fase 2: abstração Log → Record (genérico + hash configurável + /records)
+
+Início da Fase 2 (generalização do domínio), de forma **aditiva** — `/logs` e o fluxo validado ficam intactos.
+
+- **`models.Record`** (`internal/models/record.go`): registro genérico auditável — `domain`, `id`, `timestamp`, `source`, `payload` (JSON livre), `hash` + auditoria (`created_at`, `batch_id`, `merkle_root`, `batched_at`, `deleted_at`). Um `Log` é só um Record no domínio `logs`.
+- **Hash configurável:** `SHA-256(id|timestamp|source|payload canônico)`; `hash_fields` opcional restringe quais chaves do payload entram no hash (guardado no record p/ reprodutibilidade). Canônico via `json.Marshal` (Go ordena chaves) → **independe da ordem** das chaves.
+- **API `/api/v1/{domain}/records`** (`internal/handlers/records.go`): create / list (filtro `source` + paginação cursor/offset) / get / delete (soft). Protegida pela auth; reusa os helpers de cursor e soft delete.
+- **Storage:** collection `records` (config `mongodb.records_collection`, env `MONGO_RECORDS_COLLECTION`) com índices `(domain,id)` único e `(domain,created_at,id)` p/ cursor.
+- Testes: `models` (determinismo do hash por ordem de chave, `hash_fields`, validação) + `database.TestRecordsCRUD` (isolamento por domínio + soft delete, contra Mongo). Validado também rodando a API: `POST /api/v1/contracts/records` → 201 com hash; list ok. `go build`/`vet`/`test ./...` limpos.
+- **Adiado (próximos incrementos):** ancoragem Merkle/Fabric dos records (hoje log-specific), WAL e cache p/ records, isolamento multi-tenant de storage/channel.
 
 ### 2026-06-04 — Validação E2E (rede viva) + 4 bugs corrigidos
 

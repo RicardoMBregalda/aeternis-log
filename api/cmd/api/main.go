@@ -192,11 +192,12 @@ func main() {
 
 	healthHandler := handlers.NewHealthHandler(mongoClient, collections, redisCache, fabricClient, batchProcessor, Version, BuildTime)
 	logHandler := handlers.NewLogHandler(collections, redisCache, walInstance)
+	recordHandler := handlers.NewRecordHandler(collections)
 	merkleHandler := handlers.NewMerkleHandler(batchProcessor, redisCache)
 	walHandler := handlers.NewWALHandler(walInstance)
 	statsHandler := handlers.NewStatsHandler(collections, mongoClient, redisCache, fabricClient, batchProcessor, walInstance)
 
-	registerRoutes(router, authMW, healthHandler, logHandler, merkleHandler, walHandler, statsHandler)
+	registerRoutes(router, authMW, healthHandler, logHandler, recordHandler, merkleHandler, walHandler, statsHandler)
 
 	srv := &http.Server{
 		Addr:         cfg.GetServerAddr(),
@@ -239,6 +240,7 @@ func registerRoutes(
 	authMW gin.HandlerFunc,
 	healthHandler *handlers.HealthHandler,
 	logHandler *handlers.LogHandler,
+	recordHandler *handlers.RecordHandler,
 	merkleHandler *handlers.MerkleHandler,
 	walHandler *handlers.WALHandler,
 	statsHandler *handlers.StatsHandler,
@@ -258,6 +260,18 @@ func registerRoutes(
 		v1.GET("/ping", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "pong", "version": Version})
 		})
+	}
+
+	// Generic, domain-scoped records: /api/v1/{domain}/records
+	records := router.Group("/api/v1/:domain/records")
+	if authMW != nil {
+		records.Use(authMW)
+	}
+	{
+		records.POST("", recordHandler.CreateRecord)
+		records.GET("", recordHandler.ListRecords)
+		records.GET("/:id", recordHandler.GetRecord)
+		records.DELETE("/:id", recordHandler.DeleteRecord)
 	}
 
 	logs := router.Group("/logs")

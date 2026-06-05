@@ -85,6 +85,27 @@ curl -X POST http://localhost:5001/logs \
   -d '{"source": "auth-service", "level": "INFO", "message": "User login successful"}'
 ```
 
+## Records (generic domain)
+
+Beyond logs, the API anchors **any** auditable record under a client-chosen domain — the core of the *Tamper-Evident Data Anchoring* pattern. A `Log` is just a record in the `logs` domain.
+
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/api/v1/{domain}/records` | Create a record (`payload` is any JSON; integrity `hash` computed automatically) |
+| `GET` | `/api/v1/{domain}/records` | List with filters (`source`) and pagination (`offset` or `cursor`) |
+| `GET` | `/api/v1/{domain}/records/:id` | Fetch by ID |
+| `DELETE` | `/api/v1/{domain}/records/:id` | Soft-delete (audit trail preserved) |
+
+```bash
+curl -X POST http://localhost:5001/api/v1/contracts/records \
+  -H 'Content-Type: application/json' \
+  -d '{"source": "crm", "payload": {"party": "acme", "amount": 100}, "hash_fields": ["party", "amount"]}'
+```
+
+The hash is `SHA-256(id | timestamp | source | canonical(payload))`. Optional `hash_fields` restricts which payload keys feed the hash (so other fields can change without breaking it); the canonical payload uses sorted keys, so the hash is independent of key order.
+
+> Records currently store an integrity hash; generalizing the Merkle batching / Fabric anchoring (today log-specific) to records is the next increment.
+
 ## Authentication & rate limiting
 
 API key authentication and rate limiting are **opt-in** (off by default). Enable them in production:
