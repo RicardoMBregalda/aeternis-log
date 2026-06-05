@@ -192,7 +192,7 @@ func main() {
 
 	healthHandler := handlers.NewHealthHandler(mongoClient, collections, redisCache, fabricClient, batchProcessor, Version, BuildTime)
 	logHandler := handlers.NewLogHandler(collections, redisCache, walInstance)
-	recordHandler := handlers.NewRecordHandler(collections)
+	recordHandler := handlers.NewRecordHandler(collections, batchProcessor)
 	merkleHandler := handlers.NewMerkleHandler(batchProcessor, redisCache)
 	walHandler := handlers.NewWALHandler(walInstance)
 	statsHandler := handlers.NewStatsHandler(collections, mongoClient, redisCache, fabricClient, batchProcessor, walInstance)
@@ -270,6 +270,8 @@ func registerRoutes(
 	{
 		records.POST("", recordHandler.CreateRecord)
 		records.GET("", recordHandler.ListRecords)
+		records.POST("/batch", recordHandler.ForceRecordBatch)
+		records.POST("/verify/:batchId", recordHandler.VerifyRecordBatch)
 		records.GET("/:id", recordHandler.GetRecord)
 		records.DELETE("/:id", recordHandler.DeleteRecord)
 	}

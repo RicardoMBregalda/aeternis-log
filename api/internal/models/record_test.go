@@ -38,6 +38,29 @@ func TestRecordHashFields(t *testing.T) {
 	}
 }
 
+func TestCalculateRecordMerkleRoot(t *testing.T) {
+	recs := []*Record{
+		{ID: "1", Timestamp: "t1", Source: "s", Payload: map[string]interface{}{"a": 1}},
+		{ID: "2", Timestamp: "t2", Source: "s", Payload: map[string]interface{}{"a": 2}},
+	}
+
+	root, hashes := CalculateRecordMerkleRoot(recs)
+	if root == "" || len(hashes) != 2 {
+		t.Fatalf("unexpected root/hashes: %q %v", root, hashes)
+	}
+
+	// Deterministic: same content yields the same root.
+	if again, _ := CalculateRecordMerkleRoot(recs); again != root {
+		t.Error("merkle root must be deterministic for the same records")
+	}
+
+	// Tamper-evident: changing a record's content changes the root.
+	recs[0].Payload["a"] = 999
+	if tampered, _ := CalculateRecordMerkleRoot(recs); tampered == root {
+		t.Error("merkle root must change when a record's content changes")
+	}
+}
+
 func TestRecordValidate(t *testing.T) {
 	valid := &Record{Domain: "d", ID: "1", Source: "s", Payload: map[string]interface{}{}}
 	if err := valid.Validate(); err != nil {

@@ -251,6 +251,65 @@ func (c *Collections) SoftDeleteRecord(ctx context.Context, domain, id string) e
 	return nil
 }
 
+// FindRecordsWithoutBatch finds not-yet-batched, non-deleted records in a domain,
+// in deterministic (created_at, id) order for a stable Merkle root.
+func (c *Collections) FindRecordsWithoutBatch(ctx context.Context, domain string, limit int) ([]*models.Record, error) {
+	filter := bson.M{
+		"domain":     domain,
+		"batch_id":   bson.M{"$exists": false},
+		"deleted_at": bson.M{"$exists": false},
+	}
+	opts := options.Find().
+		SetSort(bson.D{{Key: "created_at", Value: 1}, {Key: "id", Value: 1}}).
+		SetLimit(int64(limit))
+
+	return c.FindRecords(ctx, filter, opts)
+}
+
+// FindRecordsByBatchID returns the records of a batch in the same deterministic
+// order used at batch creation (so the Merkle root recomputes identically).
+func (c *Collections) FindRecordsByBatchID(ctx context.Context, domain, batchID string) ([]*models.Record, error) {
+	filter := bson.M{"domain": domain, "batch_id": batchID}
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}, {Key: "id", Value: 1}})
+
+	return c.FindRecords(ctx, filter, opts)
+}
+
+// UpdateRecordBatch stamps a set of records with their batch id and Merkle root.
+func (c *Collections) UpdateRecordBatch(ctx context.Context, domain string, recordIDs []string, batchID, merkleRoot string) error {
+	filter := bson.M{"domain": domain, "id": bson.M{"$in": recordIDs}}
+	update := bson.M{
+		"$set": bson.M{
+			"batch_id":    batchID,
+			"merkle_root": merkleRoot,
+			"batched_at":  time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+
+	if _, err := c.Records.UpdateMany(ctx, filter, update); err != nil {
+		return fmt.Errorf("failed to update records with batch: %w", err)
+	}
+	return nil
+}
+
+// DistinctPendingRecordDomains returns the domains that have records awaiting
+// batching, so auto-batching can process each domain independently.
+func (c *Collections) DistinctPendingRecordDomains(ctx context.Context) ([]string, error) {
+	filter := bson.M{"batch_id": bson.M{"$exists": false}, "deleted_at": bson.M{"$exists": false}}
+	values, err := c.Records.Distinct(ctx, "domain", filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pending record domains: %w", err)
+	}
+
+	domains := make([]string, 0, len(values))
+	for _, v := range values {
+		if s, ok := v.(string); ok && s != "" {
+			domains = append(domains, s)
+		}
+	}
+	return domains, nil
+}
+
 // ========================================
 // SYNC CONTROL COLLECTION OPERATIONS
 // ========================================

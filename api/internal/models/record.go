@@ -94,3 +94,25 @@ type ListRecordsResponse struct {
 	Offset     int       `json:"offset"`
 	NextCursor string    `json:"next_cursor,omitempty"`
 }
+
+// CalculateRecordMerkleRoot recomputes each record's hash from its content and
+// builds the Merkle root, returning the root and the leaf hashes. Recomputing
+// (instead of trusting the stored hash) is what makes the batch tamper-evident:
+// if a record's content changed, its leaf hash — and the root — change too.
+func CalculateRecordMerkleRoot(records []*Record) (string, []string) {
+	hashes := make([]string, len(records))
+	for i, r := range records {
+		hashes[i] = r.CalculateHash()
+	}
+	return BuildMerkleTree(hashes), hashes
+}
+
+// RecordBatchResult describes a Merkle batch of records anchored to Fabric.
+type RecordBatchResult struct {
+	BatchID    string `json:"batch_id"`
+	Domain     string `json:"domain"`
+	MerkleRoot string `json:"merkle_root"`
+	NumRecords int    `json:"num_records"`
+	TxID       string `json:"tx_id,omitempty"`
+	Anchored   bool   `json:"anchored"`
+}
