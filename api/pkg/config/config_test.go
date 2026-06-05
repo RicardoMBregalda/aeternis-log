@@ -55,22 +55,28 @@ func TestValidateRateLimit(t *testing.T) {
 }
 
 func TestValidateFabric(t *testing.T) {
+	// docker-exec transport requires peer_container.
 	c, err := LoadConfig("")
 	if err != nil {
 		t.Fatalf("default config should be valid: %v", err)
 	}
-
 	c.Fabric.SyncEnabled = true
+	c.Fabric.Transport = "docker-exec"
 	c.Fabric.PeerContainer = ""
 	if err := c.Validate(); err == nil {
-		t.Error("expected error when sync is enabled without peer_container")
+		t.Error("docker-exec: expected error without peer_container")
 	}
 
-	c.Fabric.PeerContainer = "peer0"
-	c.Fabric.TLSEnabled = true
-	c.Fabric.OrdererTLSCAFile = ""
-	if err := c.Validate(); err == nil {
-		t.Error("expected error when tls is enabled without orderer_tls_ca_file")
+	// gateway transport requires the identity/cert settings.
+	c2, err := LoadConfig("")
+	if err != nil {
+		t.Fatalf("default config should be valid: %v", err)
+	}
+	c2.Fabric.SyncEnabled = true
+	c2.Fabric.Transport = "gateway"
+	c2.Fabric.IdentityCertFile = ""
+	if err := c2.Validate(); err == nil {
+		t.Error("gateway: expected error without identity_cert_file")
 	}
 }
 

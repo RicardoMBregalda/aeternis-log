@@ -20,7 +20,7 @@
 - **`DeleteLog` soft delete** _(Fase 1)_ — `DELETE /logs/:id` agora marca `deleted_at` (`collections.SoftDeleteLog`) em vez de no-op; documento e âncora na blockchain preservados; deletados escondidos das rotas de leitura. _(ver Changelog)_
 - **Paginação por cursor** _(Fase 1)_ — `GET /logs` aceita `cursor` (keyset por `created_at` + `id`) e retorna `next_cursor`; `offset` mantido (sem breaking change). Índice composto `(created_at, id)` adicionado. _(ver Changelog)_
 - **Env vars p/ configs hardcoded do Fabric** _(Fase 1)_ — `peer_container`, `orderer_address`, `orderer_tls_ca_file`, `tls_enabled` viraram config/env (`FABRIC_*`); `client.go` não tem mais nomes/paths fixos. _(ver Changelog)_
-- **Fabric via SDK (Gateway gRPC)** _(Fase 1)_ — transporte atrás de `fabric.Backend`: `docker-exec` (default) ou `gateway` (`fabric-gateway`, gRPC+TLS com identidade X.509, sem `docker.sock`), via `fabric.transport`. Go 1.25 + `fabric-gateway` v1.11.0 (latest). ✅ **E2E validado contra a rede viva** (Submit `StoreMerkleRoot` + Evaluate `QueryMerkleBatch` reais, txID confirmado — `TestGatewayE2E`). Default segue `docker-exec` porque os caminhos de cert do gateway são específicos do deploy. _(ver Changelog)_
+- **Fabric via SDK (Gateway gRPC)** _(Fase 1)_ — transporte atrás de `fabric.Backend`: **`gateway` (default)** ou `docker-exec` (fallback), via `fabric.transport`. `gateway` usa `fabric-gateway` (gRPC+TLS, identidade X.509, **sem `docker.sock`**). Go 1.25 + `fabric-gateway` v1.11.0 (latest). ✅ **E2E validado contra a rede viva** (Submit `StoreMerkleRoot` + Evaluate `QueryMerkleBatch` reais, txID confirmado — `TestGatewayE2E`) **e** API subindo com gateway default (`/health` fabric healthy). _(ver Changelog)_
 
 ---
 
@@ -166,6 +166,15 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-04 — Gateway promovido a transporte default
+
+Com o E2E validado, o `gateway` vira o transporte padrão; `docker-exec` fica como fallback.
+
+- `config`: default `fabric.transport: gateway` + caminhos de cert/identidade default apontando para o mount do docker-compose (`/fabric-crypto/...`). `config.yaml`, `.env.example` e README atualizados.
+- `docker-compose`: `docker.sock` desmontado (comentado) — não é mais necessário no caminho default; o mount `crypto-config:/fabric-crypto:ro` sustenta o gateway. A API e os peers já compartilham a rede `tcc_log_network`, então o container resolve `peer0.org1.example.com:7051`.
+- Validação: a API sobe com `transport=gateway` (log "Fabric client initialized") e `/health` reporta `fabric: healthy` (backend gateway construído: identidade + TLS carregados, gRPC client criado). Somado ao `TestGatewayE2E`, cobre construção + boot + transação real.
+- _Nota de operação:_ para rodar **nativo** (fora do compose), use `FABRIC_TRANSPORT=docker-exec` ou sobrescreva os paths do gateway (os defaults são do container). O container `tcc-go-api` em execução ainda usa a imagem antiga — aplica-se com um rebuild (`make api`).
 
 ### 2026-06-04 — Fabric: upgrade para as versões mais recentes
 

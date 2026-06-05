@@ -207,7 +207,7 @@ func LoadConfig(configPath string) (*Config, error) {
 			SyncMaxWorkers:   10,
 			InvokeTimeout:    30 * time.Second,
 			QueryTimeout:     10 * time.Second,
-			Transport:        "docker-exec",
+			Transport:        "gateway",
 			PeerContainer:    "peer0.org1.example.com",
 			OrdererAddress:   "orderer.example.com:7050",
 			OrdererTLSCAFile: "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem",
@@ -215,6 +215,9 @@ func LoadConfig(configPath string) (*Config, error) {
 			MSPID:                     "Org1MSP",
 			GatewayPeerEndpoint:       "peer0.org1.example.com:7051",
 			GatewayServerNameOverride: "peer0.org1.example.com",
+			GatewayPeerTLSCAFile:      "/fabric-crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt",
+			IdentityCertFile:          "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/signcerts/Admin@org1.example.com-cert.pem",
+			IdentityKeyDir:            "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore",
 		},
 		WAL: WALConfig{
 			Enabled:         true,

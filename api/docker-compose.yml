@@ -11,10 +11,10 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - wal-data:/var/log/tcc-wal
-      # docker.sock is only needed for the legacy "docker-exec" Fabric transport.
-      - /var/run/docker.sock:/var/run/docker.sock
-      # crypto material for the "gateway" (gRPC) transport, mounted read-only.
+      # crypto material for the "gateway" (gRPC) transport (default), mounted read-only.
       - ../hybrid-architecture/fabric-network/crypto-config:/fabric-crypto:ro
+      # docker.sock is only needed for the legacy "docker-exec" transport; uncomment to use it:
+      # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=5001
@@ -24,12 +24,9 @@ services:
       - FABRIC_API_URL=http://fabric-api:4000
       - WAL_DIRECTORY=/var/log/tcc-wal
       - LOG_LEVEL=info
-      # To use the gRPC gateway transport instead of docker-exec, set:
-      # - FABRIC_TRANSPORT=gateway
-      # - FABRIC_GATEWAY_PEER_ENDPOINT=peer0.org1.example.com:7051
-      # - FABRIC_GATEWAY_PEER_TLS_CA_FILE=/fabric-crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
-      # - FABRIC_IDENTITY_CERT_FILE=/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/signcerts/Admin@org1.example.com-cert.pem
-      # - FABRIC_IDENTITY_KEY_DIR=/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore
+      # Fabric transport defaults to "gateway" (gRPC), using the crypto mounted
+      # at /fabric-crypto and the config.yaml paths. To fall back to the legacy
+      # transport, set FABRIC_TRANSPORT=docker-exec and uncomment the docker.sock mount.
     depends_on:
       - mongodb
       - redis
