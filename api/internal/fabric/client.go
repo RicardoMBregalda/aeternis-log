@@ -55,12 +55,9 @@ func (fc *FabricClient) QueryChaincode(ctx context.Context, function string, arg
 	return fc.backend.Query(ctx, function, args)
 }
 
-// StoreMerkleBatch stores a Merkle batch in the Fabric blockchain.
-//
-// NOTE: the chaincode actually exposes "StoreMerkleRoot" (see
-// hybrid-architecture/chaincode); the legacy function names below are a
-// pre-existing mismatch and are fixed together with the gateway backend, where
-// the call can be validated against a running network.
+// StoreMerkleBatch stores a Merkle batch in the Fabric blockchain. It maps to
+// the chaincode's StoreMerkleRoot(batchID, merkleRoot, timestamp, numLogs, logIDs)
+// transaction.
 func (fc *FabricClient) StoreMerkleBatch(ctx context.Context, batchID, merkleRoot string, numLogs int, logIDs []string) (*InvokeResponse, error) {
 	logIDsJSON, err := json.Marshal(logIDs)
 	if err != nil {
@@ -75,12 +72,13 @@ func (fc *FabricClient) StoreMerkleBatch(ctx context.Context, batchID, merkleRoo
 		string(logIDsJSON),
 	}
 
-	return fc.InvokeChaincode(ctx, "storeMerkleBatch", args)
+	return fc.InvokeChaincode(ctx, "StoreMerkleRoot", args)
 }
 
-// VerifyMerkleBatch verifies a Merkle batch from the Fabric blockchain.
+// VerifyMerkleBatch reads a Merkle batch from the Fabric blockchain (chaincode
+// QueryMerkleBatch).
 func (fc *FabricClient) VerifyMerkleBatch(ctx context.Context, batchID string) (*QueryResponse, error) {
-	return fc.QueryChaincode(ctx, "getMerkleBatch", []string{batchID})
+	return fc.QueryChaincode(ctx, "QueryMerkleBatch", []string{batchID})
 }
 
 // GetBatchHistory retrieves the history of a batch from Fabric.

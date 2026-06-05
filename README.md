@@ -112,6 +112,8 @@ The API reads `api/config.yaml` and accepts overrides via environment variables 
 
 **Running multiple API instances:** set `wal.backend: redis` (or `WAL_BACKEND=redis`). The WAL then uses a Redis Streams consumer group, so each log entry is processed by exactly one instance and entries from a crashed instance are reclaimed automatically. In this mode durability depends on Redis persistence — run Redis with AOF enabled (`appendonly yes`; `appendfsync always` for parity with the file backend's per-write `fsync`). The default `file` backend keeps the original single-instance behavior.
 
+**Fabric transport:** the API talks to the peer via `fabric.transport`. `docker-exec` (default) shells out to the peer CLI and needs the Docker socket; `gateway` uses the Fabric Gateway gRPC SDK with an X.509 identity (no `docker.sock`). Set `FABRIC_TRANSPORT=gateway` plus the identity/TLS paths (see `api/.env.example`) to switch.
+
 ## Development
 
 ```bash
