@@ -110,6 +110,8 @@ Records are batched per domain (automatically, or via `POST .../records/batch`),
 
 **Webhook:** set `webhook.enabled` + `webhook.url` (or `WEBHOOK_ENABLED`/`WEBHOOK_URL`) to receive a `batch.anchored` callback every time a batch — logs or records — is anchored. The JSON payload (`domain`, `batch_id`, `merkle_root`, `num_records`, `tx_id`, `anchored_at`) is signed with HMAC-SHA256 in `X-Webhook-Signature` when a `webhook.secret` is set; delivery is async with retries.
 
+**Go SDK:** [`sdk/go`](sdk/go) (package `anchor`, standard-library only) wraps the API with automatic retries and recomputes record hashes / Merkle roots **locally**, so integrity can be verified without trusting the server. See [sdk/go/README.md](sdk/go/README.md).
+
 ## Authentication & rate limiting
 
 API key authentication and rate limiting are **opt-in** (off by default). Enable them in production:
