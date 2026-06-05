@@ -20,6 +20,7 @@ import (
 // anchored on Fabric.
 type BatchAnchoredEvent struct {
 	Event      string `json:"event"` // always "batch.anchored"
+	Tenant     string `json:"tenant"`
 	Domain     string `json:"domain"`
 	BatchID    string `json:"batch_id"`
 	MerkleRoot string `json:"merkle_root"`

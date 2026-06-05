@@ -388,6 +388,7 @@ func TestRecordsCRUD(t *testing.T) {
 	client.Database.Collection(cfg.RecordsCollection).Drop(ctx)
 
 	rec := &models.Record{
+		Tenant:    "acme",
 		Domain:    "contracts",
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().Format(time.RFC3339),
@@ -400,7 +401,7 @@ func TestRecordsCRUD(t *testing.T) {
 		t.Fatalf("insert: %v", err)
 	}
 
-	found, err := collections.FindRecordByID(ctx, "contracts", rec.ID)
+	found, err := collections.FindRecordByID(ctx, "acme", "contracts", rec.ID)
 	if err != nil {
 		t.Fatalf("find: %v", err)
 	}
@@ -408,16 +409,20 @@ func TestRecordsCRUD(t *testing.T) {
 		t.Errorf("hash mismatch: got %s want %s", found.Hash, rec.Hash)
 	}
 
-	// Domain isolation: the same id under a different domain must not be found.
-	if _, err := collections.FindRecordByID(ctx, "other", rec.ID); err == nil {
+	// Tenant isolation: the same id under another tenant must not be found.
+	if _, err := collections.FindRecordByID(ctx, "globex", "contracts", rec.ID); err == nil {
+		t.Error("expected not found for the same id under a different tenant")
+	}
+	// Domain isolation: the same id under another domain must not be found.
+	if _, err := collections.FindRecordByID(ctx, "acme", "other", rec.ID); err == nil {
 		t.Error("expected not found for the same id in a different domain")
 	}
 
 	// Soft delete hides the record from active listings but keeps it.
-	if err := collections.SoftDeleteRecord(ctx, "contracts", rec.ID); err != nil {
+	if err := collections.SoftDeleteRecord(ctx, "acme", "contracts", rec.ID); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
-	active, err := collections.FindRecords(ctx, bson.M{"domain": "contracts", "deleted_at": bson.M{"$exists": false}}, NewFindOptions())
+	active, err := collections.FindRecords(ctx, bson.M{"tenant": "acme", "domain": "contracts", "deleted_at": bson.M{"$exists": false}}, NewFindOptions())
 	if err != nil {
 		t.Fatalf("find active: %v", err)
 	}
@@ -426,7 +431,7 @@ func TestRecordsCRUD(t *testing.T) {
 			t.Error("soft-deleted record should not appear in active listing")
 		}
 	}
-	if err := collections.SoftDeleteRecord(ctx, "contracts", rec.ID); !errors.Is(err, mongo.ErrNoDocuments) {
+	if err := collections.SoftDeleteRecord(ctx, "acme", "contracts", rec.ID); !errors.Is(err, mongo.ErrNoDocuments) {
 		t.Errorf("re-delete: expected ErrNoDocuments, got %v", err)
 	}
 }

@@ -210,15 +210,15 @@ func (c *Collections) FindRecords(ctx context.Context, filter bson.M, opts *opti
 	return records, nil
 }
 
-// FindRecordByID finds a single record by domain and id.
-func (c *Collections) FindRecordByID(ctx context.Context, domain, id string) (*models.Record, error) {
-	filter := bson.M{"domain": domain, "id": id}
+// FindRecordByID finds a single record by tenant, domain and id.
+func (c *Collections) FindRecordByID(ctx context.Context, tenant, domain, id string) (*models.Record, error) {
+	filter := bson.M{"tenant": tenant, "domain": domain, "id": id}
 
 	var record models.Record
 	err := c.Records.FindOne(ctx, filter).Decode(&record)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, fmt.Errorf("record not found: %s/%s", domain, id)
+			return nil, fmt.Errorf("record not found: %s/%s/%s", tenant, domain, id)
 		}
 		return nil, fmt.Errorf("failed to find record: %w", err)
 	}
@@ -237,8 +237,8 @@ func (c *Collections) CountRecords(ctx context.Context, filter bson.M) (int64, e
 // SoftDeleteRecord marks a record as deleted (sets deleted_at) without removing
 // it, preserving the audit trail. Returns mongo.ErrNoDocuments when no matching,
 // not-yet-deleted record exists.
-func (c *Collections) SoftDeleteRecord(ctx context.Context, domain, id string) error {
-	filter := bson.M{"domain": domain, "id": id, "deleted_at": bson.M{"$exists": false}}
+func (c *Collections) SoftDeleteRecord(ctx context.Context, tenant, domain, id string) error {
+	filter := bson.M{"tenant": tenant, "domain": domain, "id": id, "deleted_at": bson.M{"$exists": false}}
 	update := bson.M{"$currentDate": bson.M{"deleted_at": true}}
 
 	result, err := c.Records.UpdateOne(ctx, filter, update)
@@ -253,8 +253,9 @@ func (c *Collections) SoftDeleteRecord(ctx context.Context, domain, id string) e
 
 // FindRecordsWithoutBatch finds not-yet-batched, non-deleted records in a domain,
 // in deterministic (created_at, id) order for a stable Merkle root.
-func (c *Collections) FindRecordsWithoutBatch(ctx context.Context, domain string, limit int) ([]*models.Record, error) {
+func (c *Collections) FindRecordsWithoutBatch(ctx context.Context, tenant, domain string, limit int) ([]*models.Record, error) {
 	filter := bson.M{
+		"tenant":     tenant,
 		"domain":     domain,
 		"batch_id":   bson.M{"$exists": false},
 		"deleted_at": bson.M{"$exists": false},
@@ -268,16 +269,16 @@ func (c *Collections) FindRecordsWithoutBatch(ctx context.Context, domain string
 
 // FindRecordsByBatchID returns the records of a batch in the same deterministic
 // order used at batch creation (so the Merkle root recomputes identically).
-func (c *Collections) FindRecordsByBatchID(ctx context.Context, domain, batchID string) ([]*models.Record, error) {
-	filter := bson.M{"domain": domain, "batch_id": batchID}
+func (c *Collections) FindRecordsByBatchID(ctx context.Context, tenant, domain, batchID string) ([]*models.Record, error) {
+	filter := bson.M{"tenant": tenant, "domain": domain, "batch_id": batchID}
 	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}, {Key: "id", Value: 1}})
 
 	return c.FindRecords(ctx, filter, opts)
 }
 
 // UpdateRecordBatch stamps a set of records with their batch id and Merkle root.
-func (c *Collections) UpdateRecordBatch(ctx context.Context, domain string, recordIDs []string, batchID, merkleRoot string) error {
-	filter := bson.M{"domain": domain, "id": bson.M{"$in": recordIDs}}
+func (c *Collections) UpdateRecordBatch(ctx context.Context, tenant, domain string, recordIDs []string, batchID, merkleRoot string) error {
+	filter := bson.M{"tenant": tenant, "domain": domain, "id": bson.M{"$in": recordIDs}}
 	update := bson.M{
 		"$set": bson.M{
 			"batch_id":    batchID,
@@ -292,22 +293,48 @@ func (c *Collections) UpdateRecordBatch(ctx context.Context, domain string, reco
 	return nil
 }
 
-// DistinctPendingRecordDomains returns the domains that have records awaiting
-// batching, so auto-batching can process each domain independently.
-func (c *Collections) DistinctPendingRecordDomains(ctx context.Context) ([]string, error) {
-	filter := bson.M{"batch_id": bson.M{"$exists": false}, "deleted_at": bson.M{"$exists": false}}
-	values, err := c.Records.Distinct(ctx, "domain", filter)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pending record domains: %w", err)
+// RecordScope identifies a (tenant, domain) partition of records.
+type RecordScope struct {
+	Tenant string
+	Domain string
+}
+
+// DistinctPendingRecordScopes returns the (tenant, domain) partitions that have
+// records awaiting batching, so auto-batching can process each independently.
+func (c *Collections) DistinctPendingRecordScopes(ctx context.Context) ([]RecordScope, error) {
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.D{
+			{Key: "batch_id", Value: bson.D{{Key: "$exists", Value: false}}},
+			{Key: "deleted_at", Value: bson.D{{Key: "$exists", Value: false}}},
+		}}},
+		{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: bson.D{{Key: "tenant", Value: "$tenant"}, {Key: "domain", Value: "$domain"}}},
+		}}},
 	}
 
-	domains := make([]string, 0, len(values))
-	for _, v := range values {
-		if s, ok := v.(string); ok && s != "" {
-			domains = append(domains, s)
+	cursor, err := c.Records.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pending record scopes: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var rows []struct {
+		ID struct {
+			Tenant string `bson:"tenant"`
+			Domain string `bson:"domain"`
+		} `bson:"_id"`
+	}
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("failed to decode pending record scopes: %w", err)
+	}
+
+	scopes := make([]RecordScope, 0, len(rows))
+	for _, r := range rows {
+		if r.ID.Domain != "" {
+			scopes = append(scopes, RecordScope{Tenant: r.ID.Tenant, Domain: r.ID.Domain})
 		}
 	}
-	return domains, nil
+	return scopes, nil
 }
 
 // ========================================

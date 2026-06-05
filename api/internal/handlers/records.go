@@ -31,6 +31,15 @@ func NewRecordHandler(collections *database.Collections, batchProcessor *merkle.
 	return &RecordHandler{collections: collections, batchProcessor: batchProcessor}
 }
 
+// tenantFrom returns the caller's tenant (set by the auth middleware), falling
+// back to "default" when auth is disabled. All record operations are scoped to it.
+func tenantFrom(c *gin.Context) string {
+	if t := c.GetString("tenant"); t != "" {
+		return t
+	}
+	return "default"
+}
+
 // CreateRecord handles POST /api/v1/{domain}/records
 // @Summary Create a record
 // @Description Create a domain-scoped auditable record with an integrity hash
@@ -65,6 +74,7 @@ func (h *RecordHandler) CreateRecord(c *gin.Context) {
 	}
 
 	record := &models.Record{
+		Tenant:     tenantFrom(c),
 		Domain:     domain,
 		ID:         req.ID,
 		Timestamp:  req.Timestamp,
@@ -138,8 +148,8 @@ func (h *RecordHandler) ListRecords(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	// Base filter (domain-scoped; soft-deleted records hidden).
-	baseFilter := bson.M{"domain": domain, "deleted_at": bson.M{"$exists": false}}
+	// Base filter (tenant + domain-scoped; soft-deleted records hidden).
+	baseFilter := bson.M{"tenant": tenantFrom(c), "domain": domain, "deleted_at": bson.M{"$exists": false}}
 	if source != "" {
 		baseFilter["source"] = source
 	}
@@ -215,7 +225,7 @@ func (h *RecordHandler) GetRecord(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	record, err := h.collections.FindRecordByID(ctx, domain, id)
+	record, err := h.collections.FindRecordByID(ctx, tenantFrom(c), domain, id)
 	if err != nil || record.DeletedAt != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{
 			Error:   "not_found",
@@ -245,7 +255,8 @@ func (h *RecordHandler) DeleteRecord(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	existing, err := h.collections.FindRecordByID(ctx, domain, id)
+	tenant := tenantFrom(c)
+	existing, err := h.collections.FindRecordByID(ctx, tenant, domain, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{
 			Error:   "not_found",
@@ -256,7 +267,7 @@ func (h *RecordHandler) DeleteRecord(c *gin.Context) {
 	}
 
 	if existing.DeletedAt == nil {
-		if err := h.collections.SoftDeleteRecord(ctx, domain, id); err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
+		if err := h.collections.SoftDeleteRecord(ctx, tenant, domain, id); err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 				Error:   "database_error",
 				Message: "Failed to delete record",
@@ -298,7 +309,7 @@ func (h *RecordHandler) ForceRecordBatch(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 40*time.Second)
 	defer cancel()
 
-	result, err := h.batchProcessor.ProcessRecordBatch(ctx, domain, req.BatchSize)
+	result, err := h.batchProcessor.ProcessRecordBatch(ctx, tenantFrom(c), domain, req.BatchSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "batch_error",
@@ -337,7 +348,7 @@ func (h *RecordHandler) VerifyRecordBatch(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	result, err := h.batchProcessor.VerifyRecordBatch(ctx, domain, batchID)
+	result, err := h.batchProcessor.VerifyRecordBatch(ctx, tenantFrom(c), domain, batchID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{
 			Error:   "not_found",
