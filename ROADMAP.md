@@ -20,7 +20,7 @@
 - **`DeleteLog` soft delete** _(Fase 1)_ — `DELETE /logs/:id` agora marca `deleted_at` (`collections.SoftDeleteLog`) em vez de no-op; documento e âncora na blockchain preservados; deletados escondidos das rotas de leitura. _(ver Changelog)_
 - **Paginação por cursor** _(Fase 1)_ — `GET /logs` aceita `cursor` (keyset por `created_at` + `id`) e retorna `next_cursor`; `offset` mantido (sem breaking change). Índice composto `(created_at, id)` adicionado. _(ver Changelog)_
 - **Env vars p/ configs hardcoded do Fabric** _(Fase 1)_ — `peer_container`, `orderer_address`, `orderer_tls_ca_file`, `tls_enabled` viraram config/env (`FABRIC_*`); `client.go` não tem mais nomes/paths fixos. _(ver Changelog)_
-- **Fabric via SDK (Gateway gRPC)** _(Fase 1)_ — transporte atrás de `fabric.Backend`: `docker-exec` (default) ou `gateway` (`fabric-gateway`, gRPC+TLS com identidade X.509, sem `docker.sock`), via `fabric.transport`. Go bumpado p/ 1.21. Construção validada com o crypto real (`TestGatewayBackendConstruct`). _(ver Changelog)_ ⚠️ **E2E contra a rede viva ainda não rodado** — por isso o default segue `docker-exec`.
+- **Fabric via SDK (Gateway gRPC)** _(Fase 1)_ — transporte atrás de `fabric.Backend`: `docker-exec` (default) ou `gateway` (`fabric-gateway`, gRPC+TLS com identidade X.509, sem `docker.sock`), via `fabric.transport`. Go bumpado p/ 1.21. ✅ **E2E validado contra a rede viva** (Submit `StoreMerkleRoot` + Evaluate `QueryMerkleBatch` reais, txID confirmado — `TestGatewayE2E`). Default segue `docker-exec` porque os caminhos de cert do gateway são específicos do deploy. _(ver Changelog)_
 
 ---
 
@@ -93,7 +93,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 
 **Objetivo:** Tornar o código executável em ambiente real, não só em dev.
 
-- [x] **Fabric via SDK (Gateway gRPC)** — transporte atrás de `fabric.Backend`; novo `gatewayBackend` (`internal/fabric/gateway.go`) usa `github.com/hyperledger/fabric-gateway` (gRPC+TLS, identidade X.509 do MSP, `SubmitTransaction`/`EvaluateTransaction`), selecionável por `fabric.transport: gateway`. Go bumpado p/ 1.21; `docker.sock` dispensado nesse modo; nomes de função corrigidos (`StoreMerkleRoot`/`QueryMerkleBatch`). _(ver changelog)_ ⚠️ E2E contra a rede viva pendente.
+- [x] **Fabric via SDK (Gateway gRPC)** — transporte atrás de `fabric.Backend`; novo `gatewayBackend` (`internal/fabric/gateway.go`) usa `github.com/hyperledger/fabric-gateway` (gRPC+TLS, identidade X.509 do MSP, `SubmitTransaction`/`EvaluateTransaction`), selecionável por `fabric.transport: gateway`. Go bumpado p/ 1.21; `docker.sock` dispensado nesse modo; nomes de função corrigidos (`StoreMerkleRoot`/`QueryMerkleBatch`). **E2E validado** (`TestGatewayE2E`, build tag `integration`). _(ver changelog)_
 - [x] Remover todos os `fmt.Printf("DEBUG ...")` do código de produção — substituído por **structured logging com `zerolog`** (escolhido em vez de `slog` por compatibilidade com Go 1.18 e por ser zero-alocação no hot-path). Novo pacote `internal/logger`; logs em JSON com `request_id`, `service`, `caller`. _(ver changelog)_
 - [x] **Autenticação por API key** — middleware `middleware.APIKeyAuth` em `internal/middleware/` (comparação constant-time; `X-API-Key` ou `Authorization: Bearer`). Protege `logs`/`merkle`/`wal`/`stats`; opt-in via `auth.enabled` + `auth.api_keys`. Keys em banco / por-tenant ficam para a Fase 2 (multi-tenancy). _(ver changelog)_
 - [x] **WAL distribuído** — backend Redis Streams (consumer group) opt-in via `wal.backend: redis`; default continua `file`. Interface `wal.WAL` + `RedisWAL`/`WriteAheadLog`(file)/`NoopWAL`; recuperação de instância morta via `XAUTOCLAIM`. Redis em modo AOF (`appendfsync always`) para paridade de durabilidade. _(ver changelog)_
@@ -178,9 +178,9 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 - **Bug corrigido:** os nomes de função agora batem com o chaincode (`StoreMerkleRoot`/`QueryMerkleBatch`), antes `storeMerkleBatch`/`getMerkleBatch` (inexistentes).
 - `docker-compose`: monta `crypto-config` (`/fabric-crypto`, ro) e documenta que o `docker.sock` só serve ao transporte `docker-exec`. README/.env atualizados.
 - Testes: `TestGatewayBackendConstruct` carrega a identidade/TLS **reais** do crypto-config e valida a construção do backend (grpc.Dial é lazy, não precisa da rede). `go build`/`vet`/`test ./...` limpos no Go 1.21.
-- ⚠️ **Pendente:** validação **E2E** (Submit/Evaluate contra a rede Fabric rodando). Por isso o default segue `docker-exec`; promover `gateway` a default é o passo seguinte, após subir a rede (`make blockchain`) e rodar um invoke/query real.
+- ✅ **E2E validado:** `TestGatewayE2E` (build tag `integration`) rodou contra a rede Fabric viva — `StoreMerkleRoot` (Submit, txID real `334372ea…`) + `QueryMerkleBatch` (Evaluate) com round-trip do `merkle_root`. O default segue `docker-exec` apenas porque os caminhos de cert do gateway são específicos do deploy; tecnicamente o gateway está pronto para virar default.
 
-**Fase 1 concluída (8/8).** Próximo: Fase 2 (generalização do domínio) ou promover o gateway a default após E2E.
+**Fase 1 concluída (8/8).** Próximo: Fase 2 (generalização do domínio) ou promover o gateway a default (fornecendo os caminhos de cert no deploy).
 
 ### 2026-06-04 — Fabric via SDK, Fase A: abstração de transporte
 
