@@ -42,21 +42,23 @@ fabric:
   sync_max_workers: 10
   invoke_timeout: 30s
   query_timeout: 10s
-  # transport: "docker-exec" (legacy, requires docker.sock) or "gateway" (gRPC SDK)
-  transport: "docker-exec"
+  # transport: "gateway" (gRPC SDK, default) or "docker-exec" (legacy, requires docker.sock)
+  transport: "gateway"
   # Connection details for the docker-exec transport (parameterized so the API
   # is not tied to the dev container names / cert paths).
   peer_container: "peer0.org1.example.com"
   orderer_address: "orderer.example.com:7050"
   orderer_tls_ca_file: "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
   tls_enabled: true
-  # Gateway (gRPC) transport settings (required when transport: gateway).
+  # Gateway (gRPC) transport settings. Paths point at the crypto-config mounted
+  # by docker-compose at /fabric-crypto. For a native run, override these (and
+  # gateway_peer_endpoint) or set transport: docker-exec.
   msp_id: "Org1MSP"
   gateway_peer_endpoint: "peer0.org1.example.com:7051"
   gateway_server_name_override: "peer0.org1.example.com"
-  # gateway_peer_tls_ca_file: "/fabric-crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
-  # identity_cert_file: "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/signcerts/Admin@org1.example.com-cert.pem"
-  # identity_key_dir: "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore"
+  gateway_peer_tls_ca_file: "/fabric-crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+  identity_cert_file: "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/signcerts/Admin@org1.example.com-cert.pem"
+  identity_key_dir: "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore"
 
 wal:
   enabled: true
