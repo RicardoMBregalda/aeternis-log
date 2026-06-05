@@ -22,6 +22,18 @@ type Config struct {
 	Metrics   MetricsConfig   `yaml:"metrics"`
 	Auth      AuthConfig      `yaml:"auth"`
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
+	Webhook   WebhookConfig   `yaml:"webhook"`
+}
+
+// WebhookConfig configures the callback fired when a batch is anchored on the
+// blockchain. The payload is signed with HMAC-SHA256 (header X-Webhook-Signature)
+// when a secret is set.
+type WebhookConfig struct {
+	Enabled    bool          `yaml:"enabled"`
+	URL        string        `yaml:"url"`
+	Secret     string        `yaml:"secret"`
+	Timeout    time.Duration `yaml:"timeout"`
+	MaxRetries int           `yaml:"max_retries"`
 }
 
 // AuthConfig holds API authentication configuration. When enabled, requests to
@@ -263,6 +275,11 @@ func LoadConfig(configPath string) (*Config, error) {
 			MaxRequests: 100,
 			Window:      time.Minute,
 		},
+		Webhook: WebhookConfig{
+			Enabled:    false,
+			Timeout:    5 * time.Second,
+			MaxRetries: 3,
+		},
 	}
 
 	// Load from YAML file if exists
@@ -481,6 +498,27 @@ func overrideFromEnv(config *Config) {
 			config.RateLimit.Window = d
 		}
 	}
+
+	// Webhook
+	if val := os.Getenv("WEBHOOK_ENABLED"); val != "" {
+		config.Webhook.Enabled = val == "true"
+	}
+	if val := os.Getenv("WEBHOOK_URL"); val != "" {
+		config.Webhook.URL = val
+	}
+	if val := os.Getenv("WEBHOOK_SECRET"); val != "" {
+		config.Webhook.Secret = val
+	}
+	if val := os.Getenv("WEBHOOK_TIMEOUT"); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			config.Webhook.Timeout = d
+		}
+	}
+	if val := os.Getenv("WEBHOOK_MAX_RETRIES"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			config.Webhook.MaxRetries = n
+		}
+	}
 }
 
 // splitAndTrim splits s by sep and drops empty/whitespace-only items.
@@ -601,6 +639,11 @@ func (c *Config) Validate() error {
 		if c.RateLimit.Window <= 0 {
 			return fmt.Errorf("rate_limit window must be positive")
 		}
+	}
+
+	// Validate webhook
+	if c.Webhook.Enabled && c.Webhook.URL == "" {
+		return fmt.Errorf("webhook is enabled but url is not configured")
 	}
 
 	return nil

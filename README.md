@@ -108,6 +108,8 @@ The hash is `SHA-256(id | timestamp | source | canonical(payload))`. Optional `h
 
 Records are batched per domain (automatically, or via `POST .../records/batch`), their Merkle root is anchored on Fabric, and `POST .../records/verify/{batchId}` recomputes the root from current content and compares it with the anchored one — returning `409 CORRUPTED` if anything was tampered.
 
+**Webhook:** set `webhook.enabled` + `webhook.url` (or `WEBHOOK_ENABLED`/`WEBHOOK_URL`) to receive a `batch.anchored` callback every time a batch — logs or records — is anchored. The JSON payload (`domain`, `batch_id`, `merkle_root`, `num_records`, `tx_id`, `anchored_at`) is signed with HMAC-SHA256 in `X-Webhook-Signature` when a `webhook.secret` is set; delivery is async with retries.
+
 ## Authentication & rate limiting
 
 API key authentication and rate limiting are **opt-in** (off by default). Enable them in production:
