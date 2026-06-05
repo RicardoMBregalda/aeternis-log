@@ -8,7 +8,7 @@
 | Fase | Concluído | Progresso |
 |------|-----------|-----------|
 | Fase 1 — Estabilização Técnica | 8 ✅ de 8 | `▓▓▓▓▓▓▓▓` |
-| Fase 2 — Generalização do Domínio | 3 de 7 | `▓▓▓░░░░` |
+| Fase 2 — Generalização do Domínio | 4 de 7 | `▓▓▓▓░░░` |
 | Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
 | Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
 
@@ -102,7 +102,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **Env vars para configs hardcoded do Fabric** — `peer_container`, `orderer_address`, `orderer_tls_ca_file`, `tls_enabled` na `FabricConfig` (env `FABRIC_*`), com validação. `client.go` constrói os args do `docker exec` a partir da config (`invokeArgs`/`queryArgs`, testáveis); zero nomes/paths fixos. _(ver changelog)_
 - [x] **Rate limiting** — `middleware.RateLimiter` conectado em `cmd/api/main.go` via config `rate_limit` (opt-in, por IP, com env overrides). _Nota:_ in-memory por instância; um limiter compartilhado em Redis é o follow-up para multi-instância. _(ver changelog)_
 
-### Fase 2 — Generalização do Domínio (2-3 meses) — `3 de 7`
+### Fase 2 — Generalização do Domínio (2-3 meses) — `4 de 7`
 
 **Objetivo:** Remover o acoplamento ao domínio de "logs" para suportar qualquer tipo de registro auditável.
 
@@ -111,7 +111,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **Rotas `/api/v1/{domain}/records`** — CRUD genérico (create/list+cursor/get/delete soft) sob namespace de domínio, protegido pela auth. **Aditivo:** `/logs` mantido (não renomeado) para não quebrar o fluxo validado. _(ver changelog)_
 - [ ] Multi-tenancy: cada cliente/organização tem seu próprio channel no Fabric e collection no MongoDB
 - [ ] Configurar rede Fabric de produção: mínimo 3 orgs, consenso Raft com 3 orderers, CAs separadas
-- [ ] Webhook/callback quando um batch é ancorado na blockchain (para integrações externas)
+- [x] **Webhook/callback ao ancorar** — pacote `internal/webhook`: ao ancorar um batch (logs ou records), dispara `POST` do evento `batch.anchored` (domain, batch_id, merkle_root, num_records, tx_id, anchored_at) para `webhook.url`, assinado com HMAC-SHA256 (`X-Webhook-Signature`) quando há `secret`; entrega assíncrona com retries. Opt-in via `webhook.enabled`. _(ver changelog)_
 - [ ] SDK cliente em Go com suporte a retry automático e verificação de integridade local
 
 ### Fase 3 — Experiência do Desenvolvedor (2-3 meses) — `0 de 6 (não iniciada)`
@@ -166,6 +166,15 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-05 — Fase 2: webhook/callback ao ancorar batch
+
+Notifica integrações externas quando um batch é ancorado na blockchain.
+
+- Novo pacote `internal/webhook`: `Notifier` faz `POST` do evento `batch.anchored` (`domain`, `batch_id`, `merkle_root`, `num_records`, `tx_id`, `anchored_at`) para `webhook.url`. Assinatura **HMAC-SHA256** no header `X-Webhook-Signature` quando há `webhook.secret`. Entrega **assíncrona** (fire-and-forget) com retries — nunca bloqueia nem falha a batelada (o batch já está on-chain).
+- Integrado no `BatchProcessor` (`SetNotifier` + `notifyAnchored`): dispara após ancorar tanto **logs** (`processBatch`) quanto **records** (`ProcessRecordBatch`).
+- Config `webhook` (`enabled`, `url`, `secret`, `timeout`, `max_retries`) + env `WEBHOOK_*` + validação (enabled exige url). Opt-in.
+- Testes: `internal/webhook` (payload + assinatura HMAC + retries + disabled, via httptest). **E2E ao vivo:** batch de records ancorado (tx real) → receiver local recebeu `batch.anchored` com assinatura válida. `go build`/`vet`/`test ./...` limpos.
 
 ### 2026-06-05 — Fase 2: ancoragem Merkle/Fabric generalizada para records
 

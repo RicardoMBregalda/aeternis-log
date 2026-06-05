@@ -18,6 +18,7 @@ import (
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/middleware"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/wal"
+	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/webhook"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
 
 	"github.com/gin-gonic/gin"
@@ -147,6 +148,10 @@ func main() {
 
 	// Merkle batch processor ---------------------------------------------
 	batchProcessor := merkle.NewBatchProcessor(collections, fabricClient, &cfg.Batching)
+	if notifier := webhook.New(cfg.Webhook); notifier.Enabled() {
+		batchProcessor.SetNotifier(notifier)
+		lg.Info().Str("url", cfg.Webhook.URL).Msg("batch-anchored webhook enabled")
+	}
 	if err := batchProcessor.Start(context.Background()); err != nil {
 		lg.Fatal().Err(err).Msg("failed to start batch processor")
 	}

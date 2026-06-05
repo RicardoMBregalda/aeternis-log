@@ -114,3 +114,12 @@ rate_limit:
   enabled: false
   max_requests: 100
   window: 1m
+
+# Webhook fired when a batch is anchored on the blockchain. When `secret` is set,
+# the JSON body is signed with HMAC-SHA256 (header X-Webhook-Signature).
+webhook:
+  enabled: false
+  url: ""
+  secret: ""
+  timeout: 5s
+  max_retries: 3

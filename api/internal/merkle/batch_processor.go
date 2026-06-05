@@ -9,6 +9,7 @@ import (
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/database"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/fabric"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
+	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/webhook"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
 	"github.com/google/uuid"
 	zlog "github.com/rs/zerolog/log"
@@ -19,7 +20,8 @@ type BatchProcessor struct {
 	collections   *database.Collections
 	fabricClient  *fabric.FabricClient
 	config        *config.BatchingConfig
-	
+	notifier      *webhook.Notifier
+
 	// Worker pool
 	workers       int
 	jobQueue      chan *BatchJob
@@ -66,6 +68,26 @@ func NewBatchProcessor(collections *database.Collections, fabricClient *fabric.F
 		stopChan:     make(chan struct{}),
 		stats:        &ProcessorStats{},
 	}
+}
+
+// SetNotifier attaches a webhook notifier fired when a batch is anchored.
+func (bp *BatchProcessor) SetNotifier(n *webhook.Notifier) {
+	bp.notifier = n
+}
+
+// notifyAnchored fires the batch-anchored webhook (best-effort, async).
+func (bp *BatchProcessor) notifyAnchored(domain, batchID, merkleRoot string, numRecords int, txID string) {
+	if bp.notifier == nil {
+		return
+	}
+	bp.notifier.NotifyBatchAnchored(webhook.BatchAnchoredEvent{
+		Domain:     domain,
+		BatchID:    batchID,
+		MerkleRoot: merkleRoot,
+		NumRecords: numRecords,
+		TxID:       txID,
+		AnchoredAt: time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 // Start starts the batch processor
@@ -245,7 +267,8 @@ func (bp *BatchProcessor) processBatch(ctx context.Context, batchSize int) error
 		fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
-		if _, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, batchID, merkleRoot, len(logs), logIDs); err != nil {
+		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, batchID, merkleRoot, len(logs), logIDs)
+		if err != nil {
 			bp.incrementFailedBatch()
 			return fmt.Errorf("failed to store batch in Fabric: %w", err)
 		}
@@ -254,6 +277,8 @@ func (bp *BatchProcessor) processBatch(ctx context.Context, batchSize int) error
 		if err := bp.collections.UpdateSyncStatusBatch(ctx, logIDs, models.SyncStatusSynced, batchID); err != nil {
 			return fmt.Errorf("failed to update sync status: %w", err)
 		}
+
+		bp.notifyAnchored("logs", batchID, merkleRoot, len(logs), inv.TxID)
 	}
 
 	// Update statistics
@@ -386,6 +411,7 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, domain string,
 		}
 		result.TxID = inv.TxID
 		result.Anchored = true
+		bp.notifyAnchored(domain, batchID, merkleRoot, len(records), inv.TxID)
 	}
 
 	bp.updateStats(batchID, len(records), startTime)
