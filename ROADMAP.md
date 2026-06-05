@@ -167,6 +167,17 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 
 ## Changelog de Execução
 
+### 2026-06-04 — Validação E2E (rede viva) + 4 bugs corrigidos
+
+Teste ponta a ponta pela API em container (gateway default) antes da Fase 2. O fluxo de produto funciona — log → Mongo → batch → Merkle root → **ancorado no Fabric via gateway** (provado consultando o chaincode) → `/merkle/batches` → **verificação de integridade VALID**. No caminho, o E2E pegou 4 bugs reais (todos corrigidos):
+
+1. **Crash-loop do container (permissão de chave):** o container roda como não-root e lia a chave de identidade do gateway (`priv_sk`, gerada 0600/root) de um mount read-only → "permission denied" em loop. Fix: `1-generate-artifacts.sh` torna as chaves de dev legíveis (`chmod 0644`); em produção, provisionar a chave como secret com o owner do runtime.
+2. **`/merkle/batches` 500:** `UpdateLogBatch`/`UpdateSyncStatusBatch` usavam `$currentDate` **dentro de `$set`**, gravando o objeto literal `{$currentDate:true}` em vez de uma data → o aggregate de batches falhava no decode. Fix: `batched_at` vira string RFC3339 (compatível com `BatchInfo.BatchedAt string` e `Log.BatchedAt FlexTime`); `synced_at` usa `$currentDate` no topo.
+3. **"context canceled" nos workers:** `ProcessBatch` amarrava o job assíncrono ao contexto da requisição HTTP, cancelado ao responder 202. Fix: job usa `context.Background()`; o contexto do chamador só governa o enfileiramento.
+4. **Falso "CORRUPTED" na integridade:** o Merkle root depende da ordem dos logs, e a criação (`FindLogsWithoutBatch`) e a verificação (`FindLogsByBatchID`) ordenavam só por `created_at` — com empates (logs em lote: 100 logs, 2 `created_at` distintos), a ordem divergia → root diferente. Fix: desempate determinístico por `id` (`created_at`+`id`) nas duas queries. Batch criado pós-fix verifica **VALID** (root recalculado == original).
+
+`go build`/`vet`/`test ./...` limpos no Go 1.25.
+
 ### 2026-06-04 — Gateway promovido a transporte default
 
 Com o E2E validado, o `gateway` vira o transporte padrão; `docker-exec` fica como fallback.
