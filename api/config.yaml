@@ -12,6 +12,7 @@ mongodb:
   url: "mongodb://localhost:27017"
   database: "logdb"
   collection: "logs"
+  records_collection: "records"
   sync_control_collection: "sync_control"
   min_pool_size: 10
   max_pool_size: 100

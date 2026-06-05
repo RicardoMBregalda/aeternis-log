@@ -359,6 +359,78 @@ func TestKeysetPagination(t *testing.T) {
 	}
 }
 
+// TestRecordsCRUD verifies generic record insert/find, domain isolation and
+// soft delete against MongoDB.
+func TestRecordsCRUD(t *testing.T) {
+	cfg := &config.MongoDBConfig{
+		URL:                      "mongodb://localhost:27017",
+		Database:                 "logdb_test",
+		Collection:               "logs_test",
+		RecordsCollection:        "records_test",
+		SyncControlCollection:    "sync_control_test",
+		MinPoolSize:              5,
+		MaxPoolSize:              10,
+		MaxIdleTimeMS:            60000,
+		ServerSelectionTimeoutMS: 5000,
+		ConnectTimeout:           10 * time.Second,
+		SocketTimeout:            30 * time.Second,
+	}
+
+	client, err := NewMongoClient(cfg)
+	if err != nil {
+		t.Skipf("MongoDB not available: %v", err)
+		return
+	}
+	defer client.Close(context.Background())
+
+	collections := NewCollections(client)
+	ctx := context.Background()
+	client.Database.Collection(cfg.RecordsCollection).Drop(ctx)
+
+	rec := &models.Record{
+		Domain:    "contracts",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().Format(time.RFC3339),
+		Source:    "crm",
+		Payload:   map[string]interface{}{"amount": 100, "party": "acme"},
+		CreatedAt: models.FlexTime{Time: time.Now()},
+	}
+	rec.Hash = rec.CalculateHash()
+	if err := collections.InsertRecord(ctx, rec); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	found, err := collections.FindRecordByID(ctx, "contracts", rec.ID)
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if found.Hash != rec.Hash {
+		t.Errorf("hash mismatch: got %s want %s", found.Hash, rec.Hash)
+	}
+
+	// Domain isolation: the same id under a different domain must not be found.
+	if _, err := collections.FindRecordByID(ctx, "other", rec.ID); err == nil {
+		t.Error("expected not found for the same id in a different domain")
+	}
+
+	// Soft delete hides the record from active listings but keeps it.
+	if err := collections.SoftDeleteRecord(ctx, "contracts", rec.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+	active, err := collections.FindRecords(ctx, bson.M{"domain": "contracts", "deleted_at": bson.M{"$exists": false}}, NewFindOptions())
+	if err != nil {
+		t.Fatalf("find active: %v", err)
+	}
+	for _, r := range active {
+		if r.ID == rec.ID {
+			t.Error("soft-deleted record should not appear in active listing")
+		}
+	}
+	if err := collections.SoftDeleteRecord(ctx, "contracts", rec.ID); !errors.Is(err, mongo.ErrNoDocuments) {
+		t.Errorf("re-delete: expected ErrNoDocuments, got %v", err)
+	}
+}
+
 // TestConnectWithRetry tests retry mechanism
 func TestConnectWithRetry(t *testing.T) {
 	cfg := &config.MongoDBConfig{

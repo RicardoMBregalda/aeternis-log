@@ -136,6 +136,30 @@ func (mc *MongoClient) CreateIndexes(ctx context.Context) error {
 		return fmt.Errorf("failed to create sync control indexes: %w", err)
 	}
 
+	// Records collection indexes (generic domain-scoped records)
+	recordsCollection := mc.Database.Collection(mc.Config.RecordsCollection)
+	recordsIndexes := []mongo.IndexModel{
+		{
+			// Unique per domain: the same id can exist in different domains.
+			Keys:    bson.D{{Key: "domain", Value: 1}, {Key: "id", Value: 1}},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			// Supports domain-scoped listing and (created_at, id) keyset pagination.
+			Keys: bson.D{
+				{Key: "domain", Value: 1},
+				{Key: "created_at", Value: -1},
+				{Key: "id", Value: -1},
+			},
+		},
+		{
+			Keys: bson.D{{Key: "domain", Value: 1}, {Key: "batch_id", Value: 1}},
+		},
+	}
+	if _, err := recordsCollection.Indexes().CreateMany(ctx, recordsIndexes); err != nil {
+		return fmt.Errorf("failed to create records indexes: %w", err)
+	}
+
 	return nil
 }
 
@@ -157,6 +181,11 @@ func (mc *MongoClient) GetLogsCollection() *mongo.Collection {
 // GetSyncControlCollection returns the sync control collection
 func (mc *MongoClient) GetSyncControlCollection() *mongo.Collection {
 	return mc.Database.Collection(mc.Config.SyncControlCollection)
+}
+
+// GetRecordsCollection returns the generic records collection
+func (mc *MongoClient) GetRecordsCollection() *mongo.Collection {
+	return mc.Database.Collection(mc.Config.RecordsCollection)
 }
 
 // HealthCheck performs a health check on the MongoDB connection

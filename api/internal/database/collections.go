@@ -19,6 +19,7 @@ func NewFindOptions() *options.FindOptions {
 // Collections provides easy access to MongoDB collections with type-safe methods
 type Collections struct {
 	Logs        *mongo.Collection
+	Records     *mongo.Collection
 	SyncControl *mongo.Collection
 }
 
@@ -26,6 +27,7 @@ type Collections struct {
 func NewCollections(client *MongoClient) *Collections {
 	return &Collections{
 		Logs:        client.GetLogsCollection(),
+		Records:     client.GetRecordsCollection(),
 		SyncControl: client.GetSyncControlCollection(),
 	}
 }
@@ -179,6 +181,74 @@ func (c *Collections) AggregateBatches(ctx context.Context) ([]*models.BatchInfo
 	}
 
 	return batches, nil
+}
+
+// ========================================
+// RECORDS COLLECTION OPERATIONS (generic, domain-scoped)
+// ========================================
+
+// InsertRecord inserts a new generic record.
+func (c *Collections) InsertRecord(ctx context.Context, record *models.Record) error {
+	if _, err := c.Records.InsertOne(ctx, record); err != nil {
+		return fmt.Errorf("failed to insert record: %w", err)
+	}
+	return nil
+}
+
+// FindRecords finds records with the given filter and options.
+func (c *Collections) FindRecords(ctx context.Context, filter bson.M, opts *options.FindOptions) ([]*models.Record, error) {
+	cursor, err := c.Records.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find records: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var records []*models.Record
+	if err := cursor.All(ctx, &records); err != nil {
+		return nil, fmt.Errorf("failed to decode records: %w", err)
+	}
+	return records, nil
+}
+
+// FindRecordByID finds a single record by domain and id.
+func (c *Collections) FindRecordByID(ctx context.Context, domain, id string) (*models.Record, error) {
+	filter := bson.M{"domain": domain, "id": id}
+
+	var record models.Record
+	err := c.Records.FindOne(ctx, filter).Decode(&record)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("record not found: %s/%s", domain, id)
+		}
+		return nil, fmt.Errorf("failed to find record: %w", err)
+	}
+	return &record, nil
+}
+
+// CountRecords returns the number of records matching the filter.
+func (c *Collections) CountRecords(ctx context.Context, filter bson.M) (int64, error) {
+	count, err := c.Records.CountDocuments(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count records: %w", err)
+	}
+	return count, nil
+}
+
+// SoftDeleteRecord marks a record as deleted (sets deleted_at) without removing
+// it, preserving the audit trail. Returns mongo.ErrNoDocuments when no matching,
+// not-yet-deleted record exists.
+func (c *Collections) SoftDeleteRecord(ctx context.Context, domain, id string) error {
+	filter := bson.M{"domain": domain, "id": id, "deleted_at": bson.M{"$exists": false}}
+	update := bson.M{"$currentDate": bson.M{"deleted_at": true}}
+
+	result, err := c.Records.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to soft delete record: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
 }
 
 // ========================================
