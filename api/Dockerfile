@@ -1,8 +1,8 @@
 # Multi-stage Dockerfile for Go Log Management API
 
 # Stage 1: Build
-# Go 1.21 is required by the Fabric Gateway client (github.com/hyperledger/fabric-gateway).
-FROM golang:1.21-alpine AS builder
+# Go 1.25 is required by the Fabric Gateway client (github.com/hyperledger/fabric-gateway v1.11).
+FROM golang:1.25-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make ca-certificates tzdata
