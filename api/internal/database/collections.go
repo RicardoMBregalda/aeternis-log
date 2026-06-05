@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
@@ -100,7 +101,9 @@ func (c *Collections) UpdateLogBatch(ctx context.Context, logIDs []string, batch
 		"$set": bson.M{
 			"batch_id":    batchID,
 			"merkle_root": merkleRoot,
-			"batched_at":  bson.M{"$currentDate": true},
+			// RFC3339 string: decodes into both Log.BatchedAt (FlexTime) and the
+			// BatchInfo.BatchedAt string used by the batches aggregation.
+			"batched_at": time.Now().UTC().Format(time.RFC3339),
 		},
 	}
 
@@ -116,10 +119,16 @@ func (c *Collections) UpdateLogBatch(ctx context.Context, logIDs []string, batch
 	return nil
 }
 
-// FindLogsByBatchID finds all logs in a specific batch
+// FindLogsByBatchID finds all logs in a specific batch.
+//
+// The sort must be deterministic (created_at + id tiebreaker): the Merkle root
+// depends on log ordering, and many logs can share the same created_at. Without
+// the id tiebreaker, this query and FindLogsWithoutBatch can order ties
+// differently, producing a different Merkle root on verification and a false
+// "CORRUPTED" result.
 func (c *Collections) FindLogsByBatchID(ctx context.Context, batchID string) ([]*models.Log, error) {
 	filter := bson.M{"batch_id": batchID}
-	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}})
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}, {Key: "id", Value: 1}})
 
 	return c.FindLogs(ctx, filter, opts)
 }
@@ -136,8 +145,10 @@ func (c *Collections) CountLogs(ctx context.Context, filter bson.M) (int64, erro
 // FindLogsWithoutBatch finds logs that haven't been batched yet
 func (c *Collections) FindLogsWithoutBatch(ctx context.Context, limit int) ([]*models.Log, error) {
 	filter := bson.M{"batch_id": bson.M{"$exists": false}}
+	// created_at + id: deterministic ordering so the Merkle root computed here at
+	// batch creation matches the one recomputed by FindLogsByBatchID on verify.
 	opts := options.Find().
-		SetSort(bson.D{{Key: "created_at", Value: 1}}).
+		SetSort(bson.D{{Key: "created_at", Value: 1}, {Key: "id", Value: 1}}).
 		SetLimit(int64(limit))
 
 	return c.FindLogs(ctx, filter, opts)
@@ -219,8 +230,10 @@ func (c *Collections) UpdateSyncStatusBatch(ctx context.Context, logIDs []string
 		"$set": bson.M{
 			"sync_status": status,
 			"batch_id":    batchID,
-			"synced_at":   bson.M{"$currentDate": true},
 		},
+		// $currentDate must be a top-level update operator; inside $set it would
+		// be stored as the literal object {$currentDate: true}.
+		"$currentDate": bson.M{"synced_at": true},
 	}
 
 	_, err := c.SyncControl.UpdateMany(ctx, filter, update)

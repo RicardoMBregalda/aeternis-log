@@ -181,9 +181,13 @@ func (bp *BatchProcessor) ProcessBatch(ctx context.Context, batchSize int) error
 		batchSize = bp.config.AutoBatchSize
 	}
 
+	// The job is processed asynchronously by a worker, so it must NOT inherit
+	// the caller's (HTTP request) context — that gets cancelled as soon as the
+	// handler returns, which would kill the in-flight batch. Only the enqueue
+	// below is gated by the caller's context.
 	job := &BatchJob{
 		BatchSize: batchSize,
-		Context:   ctx,
+		Context:   context.Background(),
 	}
 
 	select {
