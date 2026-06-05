@@ -1,27 +1,28 @@
 package fabric
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
 )
 
-// FabricClient handles interactions with Hyperledger Fabric
+// FabricClient handles interactions with Hyperledger Fabric through a pluggable
+// transport Backend (docker-exec today; Fabric Gateway gRPC next).
 type FabricClient struct {
-	Config *config.FabricConfig
+	Config  *config.FabricConfig
+	backend Backend
 }
 
-// NewFabricClient creates a new Fabric client
-func NewFabricClient(cfg *config.FabricConfig) *FabricClient {
-	return &FabricClient{
-		Config: cfg,
+// NewFabricClient creates a new Fabric client using the configured transport.
+func NewFabricClient(cfg *config.FabricConfig) (*FabricClient, error) {
+	backend, err := newBackend(cfg)
+	if err != nil {
+		return nil, err
 	}
+	return &FabricClient{Config: cfg, backend: backend}, nil
 }
 
 // InvokeResponse represents the response from a chaincode invocation
@@ -38,97 +39,34 @@ type QueryResponse struct {
 	Data   map[string]interface{} `json:"data"`
 }
 
-// InvokeChaincode invokes a chaincode function via docker exec
+// InvokeChaincode invokes a chaincode function through the configured backend.
 func (fc *FabricClient) InvokeChaincode(ctx context.Context, function string, args []string) (*InvokeResponse, error) {
 	if !fc.Config.SyncEnabled {
 		return nil, fmt.Errorf("fabric sync is disabled")
 	}
-
-	// Build peer chaincode invoke command
-	cmdArgs := fc.invokeArgs(function, args)
-
-	// Create command with timeout
-	cmdCtx, cancel := context.WithTimeout(ctx, fc.Config.InvokeTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(cmdCtx, "docker", cmdArgs...)
-	
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	// Execute command
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("chaincode invoke failed: %w, stderr: %s", err, stderr.String())
-	}
-
-	// Parse output
-	output := stdout.String()
-	
-	// Extract transaction ID from output
-	txID := fc.extractTxID(output)
-	
-	response := &InvokeResponse{
-		TxID:    txID,
-		Status:  "success",
-		Message: "Chaincode invoked successfully",
-	}
-
-	return response, nil
+	return fc.backend.Invoke(ctx, function, args)
 }
 
-// QueryChaincode queries a chaincode function via docker exec
+// QueryChaincode queries a chaincode function through the configured backend.
 func (fc *FabricClient) QueryChaincode(ctx context.Context, function string, args []string) (*QueryResponse, error) {
 	if !fc.Config.SyncEnabled {
 		return nil, fmt.Errorf("fabric sync is disabled")
 	}
-
-	// Build peer chaincode query command
-	cmdArgs := fc.queryArgs(function, args)
-
-	// Create command with timeout
-	cmdCtx, cancel := context.WithTimeout(ctx, fc.Config.QueryTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(cmdCtx, "docker", cmdArgs...)
-	
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	// Execute command
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("chaincode query failed: %w, stderr: %s", err, stderr.String())
-	}
-
-	// Parse JSON response
-	output := stdout.String()
-	
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(output), &data); err != nil {
-		// If not JSON, return raw output
-		data = map[string]interface{}{
-			"result": output,
-		}
-	}
-
-	response := &QueryResponse{
-		Status: "success",
-		Data:   data,
-	}
-
-	return response, nil
+	return fc.backend.Query(ctx, function, args)
 }
 
-// StoreMerkleBatch stores a Merkle batch in Fabric blockchain
+// StoreMerkleBatch stores a Merkle batch in the Fabric blockchain.
+//
+// NOTE: the chaincode actually exposes "StoreMerkleRoot" (see
+// hybrid-architecture/chaincode); the legacy function names below are a
+// pre-existing mismatch and are fixed together with the gateway backend, where
+// the call can be validated against a running network.
 func (fc *FabricClient) StoreMerkleBatch(ctx context.Context, batchID, merkleRoot string, numLogs int, logIDs []string) (*InvokeResponse, error) {
-	// Serialize log IDs to JSON
 	logIDsJSON, err := json.Marshal(logIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal log IDs: %w", err)
 	}
 
-	// Prepare arguments
 	args := []string{
 		batchID,
 		merkleRoot,
@@ -137,111 +75,40 @@ func (fc *FabricClient) StoreMerkleBatch(ctx context.Context, batchID, merkleRoo
 		string(logIDsJSON),
 	}
 
-	// Invoke chaincode
 	return fc.InvokeChaincode(ctx, "storeMerkleBatch", args)
 }
 
-// VerifyMerkleBatch verifies a Merkle batch from Fabric blockchain
+// VerifyMerkleBatch verifies a Merkle batch from the Fabric blockchain.
 func (fc *FabricClient) VerifyMerkleBatch(ctx context.Context, batchID string) (*QueryResponse, error) {
-	args := []string{batchID}
-	return fc.QueryChaincode(ctx, "getMerkleBatch", args)
+	return fc.QueryChaincode(ctx, "getMerkleBatch", []string{batchID})
 }
 
-// GetBatchHistory retrieves the history of a batch from Fabric
+// GetBatchHistory retrieves the history of a batch from Fabric.
 func (fc *FabricClient) GetBatchHistory(ctx context.Context, batchID string) (*QueryResponse, error) {
-	args := []string{batchID}
-	return fc.QueryChaincode(ctx, "getBatchHistory", args)
+	return fc.QueryChaincode(ctx, "getBatchHistory", []string{batchID})
 }
 
-// invokeArgs builds the `docker exec ... peer chaincode invoke` argument list
-// from configuration, so peer/orderer/cert locations are not hardcoded.
-func (fc *FabricClient) invokeArgs(function string, args []string) []string {
-	cmdArgs := []string{
-		"exec",
-		fc.Config.PeerContainer,
-		"peer", "chaincode", "invoke",
-		"-o", fc.Config.OrdererAddress,
-		"-C", fc.Config.Channel,
-		"-n", fc.Config.Chaincode,
-	}
-	if fc.Config.TLSEnabled {
-		cmdArgs = append(cmdArgs, "--tls", "--cafile", fc.Config.OrdererTLSCAFile)
-	}
-	return append(cmdArgs, "-c", fc.buildChaincodeArgs(function, args))
-}
-
-// queryArgs builds the `docker exec ... peer chaincode query` argument list.
-func (fc *FabricClient) queryArgs(function string, args []string) []string {
-	return []string{
-		"exec",
-		fc.Config.PeerContainer,
-		"peer", "chaincode", "query",
-		"-C", fc.Config.Channel,
-		"-n", fc.Config.Chaincode,
-		"-c", fc.buildChaincodeArgs(function, args),
-	}
-}
-
-// buildChaincodeArgs builds the chaincode arguments JSON string
-func (fc *FabricClient) buildChaincodeArgs(function string, args []string) string {
-	argsMap := map[string]interface{}{
-		"Args": append([]string{function}, args...),
-	}
-	
-	jsonBytes, _ := json.Marshal(argsMap)
-	return string(jsonBytes)
-}
-
-// extractTxID extracts the transaction ID from peer command output
-func (fc *FabricClient) extractTxID(output string) string {
-	// Look for pattern like "Chaincode invoke successful. result: status:200 payload:"..." txid:<txid>"
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "txid:") {
-			parts := strings.Split(line, "txid:")
-			if len(parts) > 1 {
-				txid := strings.TrimSpace(parts[1])
-				// Remove any trailing characters
-				txid = strings.Split(txid, " ")[0]
-				return strings.Trim(txid, "\"")
-			}
-		}
-	}
-	return ""
-}
-
-// HealthCheck performs a health check on Fabric connection
+// HealthCheck performs a health check on the Fabric connection.
 func (fc *FabricClient) HealthCheck(ctx context.Context) error {
 	if !fc.Config.SyncEnabled {
 		return fmt.Errorf("fabric sync is disabled")
 	}
-
-	// Try to query chaincode with a simple health check function
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	// Check if peer container is running
-	cmd := exec.CommandContext(ctx, "docker", "ps", "--filter", "name="+fc.Config.PeerContainer, "--format", "{{.Status}}")
-	
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("fabric peer container not accessible: %w", err)
-	}
-
-	status := strings.TrimSpace(stdout.String())
-	if !strings.HasPrefix(status, "Up") {
-		return fmt.Errorf("fabric peer container is not running: %s", status)
-	}
-
-	return nil
+	return fc.backend.HealthCheck(ctx)
 }
 
-// GetStats returns Fabric client statistics
+// Close releases any resources held by the transport backend.
+func (fc *FabricClient) Close() error {
+	if fc.backend == nil {
+		return nil
+	}
+	return fc.backend.Close()
+}
+
+// GetStats returns Fabric client statistics.
 func (fc *FabricClient) GetStats() map[string]interface{} {
 	return map[string]interface{}{
 		"enabled":        fc.Config.SyncEnabled,
+		"transport":      fc.Config.Transport,
 		"channel":        fc.Config.Channel,
 		"chaincode":      fc.Config.Chaincode,
 		"peer_container": fc.Config.PeerContainer,

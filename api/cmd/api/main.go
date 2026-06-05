@@ -131,9 +131,16 @@ func main() {
 	defer walInstance.StopProcessor()
 
 	// Fabric -------------------------------------------------------------
-	fabricClient := fabric.NewFabricClient(&cfg.Fabric)
+	fabricClient, err := fabric.NewFabricClient(&cfg.Fabric)
+	if err != nil {
+		lg.Fatal().Err(err).Msg("failed to create Fabric client")
+	}
+	defer fabricClient.Close()
 	if cfg.Fabric.SyncEnabled {
-		lg.Info().Str("channel", cfg.Fabric.Channel).Msg("Fabric client initialized")
+		lg.Info().
+			Str("channel", cfg.Fabric.Channel).
+			Str("transport", cfg.Fabric.Transport).
+			Msg("Fabric client initialized")
 	} else {
 		lg.Warn().Msg("Fabric sync disabled")
 	}

@@ -42,6 +42,8 @@ fabric:
   sync_max_workers: 10
   invoke_timeout: 30s
   query_timeout: 10s
+  # transport: "docker-exec" (legacy, requires docker.sock) or "gateway" (gRPC SDK)
+  transport: "docker-exec"
   # Connection details for the docker-exec transport (parameterized so the API
   # is not tied to the dev container names / cert paths).
   peer_container: "peer0.org1.example.com"

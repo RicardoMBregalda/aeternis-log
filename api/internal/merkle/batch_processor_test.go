@@ -23,7 +23,7 @@ func TestBatchProcessorCreation(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 
 	processor := NewBatchProcessor(nil, fabricClient, cfg)
 
@@ -48,7 +48,7 @@ func TestBatchProcessorStartStop(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 
 	processor := NewBatchProcessor(nil, fabricClient, cfg)
 
@@ -91,7 +91,7 @@ func TestBatchProcessorStatistics(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 
 	processor := NewBatchProcessor(nil, fabricClient, cfg)
 

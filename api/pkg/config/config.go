@@ -90,6 +90,11 @@ type FabricConfig struct {
 	InvokeTimeout  time.Duration `yaml:"invoke_timeout"`
 	QueryTimeout   time.Duration `yaml:"query_timeout"`
 
+	// Transport selects how the API talks to the peer:
+	//   "docker-exec" - shell out to the peer CLI (legacy, requires docker.sock)
+	//   "gateway"     - Fabric Gateway gRPC SDK
+	Transport string `yaml:"transport"`
+
 	// Connection details for the docker-exec transport (used until the SDK
 	// integration replaces it). Parameterized so the API is not tied to the dev
 	// docker-compose container names and certificate paths.
@@ -193,6 +198,7 @@ func LoadConfig(configPath string) (*Config, error) {
 			SyncMaxWorkers:   10,
 			InvokeTimeout:    30 * time.Second,
 			QueryTimeout:     10 * time.Second,
+			Transport:        "docker-exec",
 			PeerContainer:    "peer0.org1.example.com",
 			OrdererAddress:   "orderer.example.com:7050",
 			OrdererTLSCAFile: "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem",
@@ -351,6 +357,9 @@ func overrideFromEnv(config *Config) {
 	if val := os.Getenv("FABRIC_SYNC_ENABLED"); val != "" {
 		config.Fabric.SyncEnabled = val == "true"
 	}
+	if val := os.Getenv("FABRIC_TRANSPORT"); val != "" {
+		config.Fabric.Transport = val
+	}
 	if val := os.Getenv("FABRIC_PEER_CONTAINER"); val != "" {
 		config.Fabric.PeerContainer = val
 	}
@@ -477,6 +486,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Fabric.Chaincode == "" {
 		return fmt.Errorf("fabric chaincode is required")
+	}
+	switch c.Fabric.Transport {
+	case "", "docker-exec", "gateway":
+	default:
+		return fmt.Errorf("invalid fabric transport: %q (docker-exec|gateway)", c.Fabric.Transport)
 	}
 	if c.Fabric.SyncEnabled {
 		if c.Fabric.PeerContainer == "" {

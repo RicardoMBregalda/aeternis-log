@@ -30,7 +30,7 @@ func TestHealthHandlerCreation(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 	
 	handler := NewHealthHandler(nil, nil, cache, fabricClient, processor, "test", "test")
@@ -53,7 +53,7 @@ func TestHealthCheckEndpoint(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 	
 	handler := NewHealthHandler(nil, nil, cache, fabricClient, processor, "test", "test")
@@ -85,7 +85,7 @@ func TestGetStatsEndpoint(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 	
 	handler := NewHealthHandler(nil, nil, cache, fabricClient, processor, "test", "test")

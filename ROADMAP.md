@@ -21,8 +21,8 @@
 - **Paginação por cursor** _(Fase 1)_ — `GET /logs` aceita `cursor` (keyset por `created_at` + `id`) e retorna `next_cursor`; `offset` mantido (sem breaking change). Índice composto `(created_at, id)` adicionado. _(ver Changelog)_
 - **Env vars p/ configs hardcoded do Fabric** _(Fase 1)_ — `peer_container`, `orderer_address`, `orderer_tls_ca_file`, `tls_enabled` viraram config/env (`FABRIC_*`); `client.go` não tem mais nomes/paths fixos. _(ver Changelog)_
 
-### ⬜ Pendências prioritárias (próximo bloco da Fase 1)
-- **Fabric via SDK** — ainda usa `docker exec` (último item da Fase 1). A reescrita troca o `docker exec` pelo SDK gRPC e remove o mount do `docker.sock` (`internal/fabric/client.go`).
+### 🟡 Em andamento (último item da Fase 1)
+- **Fabric via SDK** — **Fase A concluída**: transporte abstraído atrás de `fabric.Backend` (`internal/fabric/`), com `docker-exec` (default) selecionável por `fabric.transport`. **Fase B pendente**: backend `gateway` (gRPC), que exige bump de Go (≥1.20), a dep `fabric-gateway`, identidade/TLS do crypto-config e a rede rodando para validar; também corrige o nome de função do chaincode e remove o mount do `docker.sock`. _(ver Changelog)_
 
 ---
 
@@ -168,6 +168,18 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-04 — Fabric via SDK, Fase A: abstração de transporte
+
+Início do último item da Fase 1. Fase A prepara o terreno sem dep nova nem bump de Go.
+
+- Interface `fabric.Backend` (`Invoke`/`Query`/`HealthCheck`/`Close`) em `internal/fabric/backend.go`; o transporte atual virou `dockerExecBackend` (`internal/fabric/docker_exec.go`).
+- `FabricClient` agora delega para um `Backend` escolhido por `fabric.transport` (`docker-exec` default | `gateway`). `NewFabricClient` passou a retornar erro; `main.go` trata e chama `Close()` no shutdown.
+- Config `fabric.transport` (+ `FABRIC_TRANSPORT`) com validação. Sem mudança de comportamento (default = docker-exec).
+- Testes reorganizados: `client_test.go` (client/delegação, seleção de transporte) e `docker_exec_test.go` (args/extractTxID). `go build`/`vet`/`test ./...` limpos.
+- **Achado:** o `client.go` chama funções (`storeMerkleBatch`/`getMerkleBatch`) que **não existem** no chaincode (`StoreMerkleRoot`/`QueryMerkleBatch`) — bug pré-existente, a ser corrigido na Fase B (com validação contra a rede). Marcado por comentário no código.
+
+**Fase B (pendente, precisa de decisão):** bump de Go + `fabric-gateway`, identidade `Admin@org1`/TLS do crypto-config, `SubmitTransaction`/`EvaluateTransaction`, remover o mount do `docker.sock`.
 
 ### 2026-06-04 — Env vars para os configs hardcoded do Fabric
 

@@ -33,7 +33,7 @@ func TestMerkleHandlerCreation(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 	
 	handler := NewMerkleHandler(processor, cache)
@@ -56,7 +56,7 @@ func TestCreateBatchRequest(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 	
 	handler := NewMerkleHandler(processor, cache)
@@ -93,7 +93,7 @@ func TestVerifyBatchValidation(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 	
 	handler := NewMerkleHandler(processor, cache)
@@ -118,7 +118,7 @@ func TestListBatchesEndpoint(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 	
 	handler := NewMerkleHandler(processor, cache)
@@ -143,7 +143,7 @@ func TestGetBatchStats(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 	
 	handler := NewMerkleHandler(processor, cache)

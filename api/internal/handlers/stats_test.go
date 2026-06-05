@@ -32,7 +32,7 @@ func TestStatsHandlerCreation(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 
 	walInstance, _ := wal.NewWriteAheadLog("/tmp/test-wal", 5*time.Second)
@@ -57,7 +57,7 @@ func TestGetStats(t *testing.T) {
 	fabricCfg := &config.FabricConfig{
 		SyncEnabled: false,
 	}
-	fabricClient := fabric.NewFabricClient(fabricCfg)
+	fabricClient, _ := fabric.NewFabricClient(fabricCfg)
 	processor := merkle.NewBatchProcessor(nil, fabricClient, batchCfg)
 
 	walInstance, _ := wal.NewWriteAheadLog("/tmp/test-wal", 5*time.Second)
