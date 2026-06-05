@@ -77,9 +77,9 @@ func newGRPCConnection(cfg *config.FabricConfig) (*grpc.ClientConn, error) {
 	pool.AddCert(cert)
 	creds := credentials.NewClientTLSFromCert(pool, cfg.GatewayServerNameOverride)
 
-	conn, err := grpc.Dial(cfg.GatewayPeerEndpoint, grpc.WithTransportCredentials(creds))
+	conn, err := grpc.NewClient(cfg.GatewayPeerEndpoint, grpc.WithTransportCredentials(creds))
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial peer %s: %w", cfg.GatewayPeerEndpoint, err)
+		return nil, fmt.Errorf("failed to create gRPC client for peer %s: %w", cfg.GatewayPeerEndpoint, err)
 	}
 	return conn, nil
 }
