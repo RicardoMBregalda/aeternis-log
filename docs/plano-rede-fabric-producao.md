@@ -139,7 +139,17 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
 - **Entregáveis:** `docker-compose.prod.yml` (secrets), docs de operação.
 - **Risco:** baixo a médio, mas obrigatório para "produção" de verdade.
 
-### Fase H — Canais por tenant  *(DECIDIDO: dentro do MVP)*
+### Fase H — Canais por tenant  *(CONCLUÍDA 2026-06-06 — DECIDIDO: dentro do MVP)*
+> **Resultado:** isolamento elevado de "campo `tenant` no mesmo canal" para **ledger
+> dedicado por tenant**. `create-tenant-channel.sh` cria o canal (configtxgen reusando
+> `ThreeOrgsChannel`, `osnadmin channel join` nos 3 orderers, `peer channel join` nos 3
+> peers, `logchaincode` aprovado/commitado com `MAJORITY` 2/3). No código:
+> `FabricConfig.TenantChannels` + `ChannelForTenant()`; o `gatewayBackend` resolve um
+> contrato por canal (cache, uma só conexão gRPC); o `batch_processor` ancora no canal do
+> tenant. **E2E provado:** com `acme→acme-channel` e `default→logchannel`, cada batch só
+> existe no canal do seu tenant (o outro canal responde "does not exist"); verify `VALID`
+> pela API; acesso cross-tenant negado (404). `go build/vet/test` limpos.
+
 - Com 3 orgs reais, criar **um canal por tenant** (ex.: `acme-channel`), elevando o
   isolamento de "campo `tenant` no mesmo canal" para **isolamento no nível de ledger** —
   fecha o caveat registrado na entrega de multi-tenancy.
@@ -158,8 +168,10 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
    núcleo multi-org com identidades reais, validável localmente. **Concluído 2026-06-06.**
 2. ✅ **F** — API ancorando com endosso 2/3 via discovery. *Fecha o E2E do produto.*
    **Concluído 2026-06-06.**
-3. ⬜ **H** — um canal Fabric por tenant. *Isolamento no nível de ledger (no MVP).*
+3. ✅ **H** — um canal Fabric por tenant. *Isolamento no nível de ledger (no MVP).*
+   **Concluído 2026-06-06.**
 4. ⬜ **G** — hardening (segredos como secret, TLS/DNS, backup/DR, observabilidade).
+   *Último item em aberto do plano de produção.*
 
 ## 5. Validação E2E (critérios de aceite)
 
@@ -180,17 +192,17 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
 - [x] A rede de dev (`make up`) continua intacta e validando em paralelo
       (`tcc_log_network` + containers `*.example.com` + API dev na :5001 no ar). ✅
 
-> **Onde parou (2026-06-06):** o núcleo multi-org (Fases **A–E**) **e a Fase F** (API
-> ancorando contra a rede prod) estão **deployados e validados** — 4 CAs, Raft de 3
-> orderers via channel participation, 3 peer orgs com CouchDB, canal `logchannel`,
-> `logchaincode` commitado com `MAJORITY` 2/3, ancoragem cross-org (incl. tolerância a
-> falhas) e o fluxo tamper-evident provado **pela API** (anchor → verify VALID → tamper →
-> CORRUPTED). **Restam:** Fase **H** (canal por tenant — isolamento no nível de ledger) e
-> Fase **G** (hardening: segredos como secret, TLS/DNS reais, multi-host, backup/DR).
-> Scripts em `prod/scripts/`: `registerEnroll.sh`, `join-peers.sh`, `deploy-chaincode.sh`,
-> `smoke-test.sh`, `status.sh`, `orderer-status.sh`, `anchor.sh`, `fault-tolerance.sh`,
-> `discover-peers.sh`, `query-batch.sh`. Stack da API prod:
-> `api/docker-compose.prod.yml` (rede `tcc_log_network_prod`, portas 5002/9091).
+> **Onde parou (2026-06-06):** Fases **A–F** **e H** estão **deployadas e validadas** — 4
+> CAs, Raft de 3 orderers via channel participation, 3 peer orgs com CouchDB, canal
+> `logchannel`, `logchaincode` commitado com `MAJORITY` 2/3, ancoragem cross-org (incl.
+> tolerância a falhas), fluxo tamper-evident **pela API** (anchor → verify VALID → tamper →
+> CORRUPTED) e **canal por tenant** (`acme-channel`) com isolamento no nível de ledger
+> provado. **Resta apenas a Fase G** (hardening: segredos como secret, TLS/DNS reais,
+> multi-host, backup/DR). Scripts em `prod/scripts/`: `registerEnroll.sh`, `join-peers.sh`,
+> `deploy-chaincode.sh`, `smoke-test.sh`, `status.sh`, `orderer-status.sh`, `anchor.sh`,
+> `fault-tolerance.sh`, `discover-peers.sh`, `query-batch.sh`, `create-tenant-channel.sh`,
+> `tenant-channel-steps.sh`. Stacks da API prod: `api/docker-compose.prod.yml` +
+> `api/config.prod.yaml` (rede `tcc_log_network_prod`, portas 5002/9091).
 
 ## 6. Riscos e mitigação (resumo)
 

@@ -80,6 +80,32 @@ func TestValidateFabric(t *testing.T) {
 	}
 }
 
+func TestChannelForTenant(t *testing.T) {
+	fc := &FabricConfig{
+		Channel: "logchannel",
+		TenantChannels: map[string]string{
+			"acme":   "acme-channel",
+			"globex": "globex-channel",
+		},
+	}
+	// Mapped tenants resolve to their dedicated channel.
+	if got := fc.ChannelForTenant("acme"); got != "acme-channel" {
+		t.Errorf("acme: got %q, want acme-channel", got)
+	}
+	// Unmapped tenants fall back to the default channel.
+	if got := fc.ChannelForTenant("default"); got != "logchannel" {
+		t.Errorf("default: got %q, want logchannel", got)
+	}
+	if got := fc.ChannelForTenant("unknown"); got != "logchannel" {
+		t.Errorf("unknown tenant should fall back to default, got %q", got)
+	}
+	// With no mapping at all, everything resolves to the default channel.
+	bare := &FabricConfig{Channel: "logchannel"}
+	if got := bare.ChannelForTenant("acme"); got != "logchannel" {
+		t.Errorf("no mapping: got %q, want logchannel", got)
+	}
+}
+
 func TestSplitAndTrim(t *testing.T) {
 	got := splitAndTrim(" a, b ,, c ", ",")
 	want := []string{"a", "b", "c"}

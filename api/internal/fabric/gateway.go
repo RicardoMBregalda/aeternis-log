@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
 	"github.com/hyperledger/fabric-gateway/pkg/client"
@@ -17,12 +18,29 @@ import (
 )
 
 // gatewayBackend talks to the peer through the Fabric Gateway gRPC API. It owns
-// a persistent gRPC connection and a handle to the chaincode contract, removing
-// the need for the Docker socket and the peer CLI.
+// a persistent gRPC connection and resolves the chaincode contract per channel
+// (one connection serves every channel the peer has joined), removing the need
+// for the Docker socket and the peer CLI. Contracts are cached per channel so
+// per-tenant channels reuse the same gateway.
 type gatewayBackend struct {
-	conn     *grpc.ClientConn
-	gateway  *client.Gateway
-	contract *client.Contract
+	conn      *grpc.ClientConn
+	gateway   *client.Gateway
+	chaincode string
+
+	mu        sync.Mutex
+	contracts map[string]*client.Contract
+}
+
+// contractFor returns the chaincode contract on the given channel, caching it.
+func (b *gatewayBackend) contractFor(channel string) *client.Contract {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if c, ok := b.contracts[channel]; ok {
+		return c
+	}
+	c := b.gateway.GetNetwork(channel).GetContract(b.chaincode)
+	b.contracts[channel] = c
+	return c
 }
 
 // newGatewayBackend builds a gateway-backed Fabric transport: it loads the
@@ -59,8 +77,12 @@ func newGatewayBackend(cfg *config.FabricConfig) (*gatewayBackend, error) {
 		return nil, fmt.Errorf("failed to connect Fabric gateway: %w", err)
 	}
 
-	contract := gw.GetNetwork(cfg.Channel).GetContract(cfg.Chaincode)
-	return &gatewayBackend{conn: conn, gateway: gw, contract: contract}, nil
+	return &gatewayBackend{
+		conn:      conn,
+		gateway:   gw,
+		chaincode: cfg.Chaincode,
+		contracts: make(map[string]*client.Contract),
+	}, nil
 }
 
 // newGRPCConnection dials the peer gateway endpoint using its TLS root cert.
@@ -125,9 +147,10 @@ func newSign(keyDir string) (identity.Sign, error) {
 	return sign, nil
 }
 
-// Invoke submits a transaction (endorse + submit) and returns its transaction ID.
-func (b *gatewayBackend) Invoke(_ context.Context, function string, args []string) (*InvokeResponse, error) {
-	proposal, err := b.contract.NewProposal(function, client.WithArguments(args...))
+// Invoke submits a transaction (endorse + submit) on the given channel and
+// returns its transaction ID.
+func (b *gatewayBackend) Invoke(_ context.Context, channel, function string, args []string) (*InvokeResponse, error) {
+	proposal, err := b.contractFor(channel).NewProposal(function, client.WithArguments(args...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create proposal: %w", err)
 	}
@@ -153,9 +176,10 @@ func (b *gatewayBackend) Invoke(_ context.Context, function string, args []strin
 	}, nil
 }
 
-// Query evaluates a transaction (no ledger update) and returns the result.
-func (b *gatewayBackend) Query(_ context.Context, function string, args []string) (*QueryResponse, error) {
-	result, err := b.contract.EvaluateTransaction(function, args...)
+// Query evaluates a transaction (no ledger update) on the given channel and
+// returns the result.
+func (b *gatewayBackend) Query(_ context.Context, channel, function string, args []string) (*QueryResponse, error) {
+	result, err := b.contractFor(channel).EvaluateTransaction(function, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate transaction: %w", err)
 	}

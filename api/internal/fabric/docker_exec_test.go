@@ -69,7 +69,7 @@ func TestInvokeArgsFromConfig(t *testing.T) {
 		TLSEnabled:       true,
 	})
 
-	args := b.invokeArgs("fn", []string{"a"})
+	args := b.invokeArgs("ch", "fn", []string{"a"})
 
 	if len(args) < 2 || args[0] != "exec" || args[1] != "my-peer" {
 		t.Fatalf("expected exec against configured peer, got %v", args)
@@ -92,7 +92,7 @@ func TestInvokeArgsFromConfig(t *testing.T) {
 func TestInvokeArgsNoTLS(t *testing.T) {
 	b := newDockerExecBackend(&config.FabricConfig{Channel: "ch", Chaincode: "cc", PeerContainer: "p", TLSEnabled: false})
 
-	args := b.invokeArgs("fn", nil)
+	args := b.invokeArgs("ch", "fn", nil)
 	if argsContain(args, "--tls") || argsContain(args, "--cafile") {
 		t.Errorf("did not expect TLS flags when TLSEnabled is false: %v", args)
 	}
@@ -102,7 +102,7 @@ func TestInvokeArgsNoTLS(t *testing.T) {
 func TestQueryArgsFromConfig(t *testing.T) {
 	b := newDockerExecBackend(&config.FabricConfig{Channel: "ch", Chaincode: "cc", PeerContainer: "qpeer"})
 
-	args := b.queryArgs("fn", nil)
+	args := b.queryArgs("ch", "fn", nil)
 	if len(args) < 2 || args[1] != "qpeer" {
 		t.Fatalf("expected exec against configured peer, got %v", args)
 	}

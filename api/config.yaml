@@ -60,6 +60,12 @@ fabric:
   gateway_peer_tls_ca_file: "/fabric-crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
   identity_cert_file: "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/signcerts/Admin@org1.example.com-cert.pem"
   identity_key_dir: "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore"
+  # Per-tenant channels (ledger-level isolation): map a tenant to its own Fabric
+  # channel. Unmapped tenants anchor to `channel` above. The channel must already
+  # exist with the chaincode committed (see prod/scripts/create-tenant-channel.sh).
+  # Env override: FABRIC_TENANT_CHANNELS="acme:acme-channel,globex:globex-channel".
+  # tenant_channels:
+  #   acme: "acme-channel"
 
 wal:
   enabled: true

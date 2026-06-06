@@ -39,26 +39,28 @@ type QueryResponse struct {
 	Data   map[string]interface{} `json:"data"`
 }
 
-// InvokeChaincode invokes a chaincode function through the configured backend.
-func (fc *FabricClient) InvokeChaincode(ctx context.Context, function string, args []string) (*InvokeResponse, error) {
+// InvokeChaincode invokes a chaincode function on the given channel through the
+// configured backend.
+func (fc *FabricClient) InvokeChaincode(ctx context.Context, channel, function string, args []string) (*InvokeResponse, error) {
 	if !fc.Config.SyncEnabled {
 		return nil, fmt.Errorf("fabric sync is disabled")
 	}
-	return fc.backend.Invoke(ctx, function, args)
+	return fc.backend.Invoke(ctx, channel, function, args)
 }
 
-// QueryChaincode queries a chaincode function through the configured backend.
-func (fc *FabricClient) QueryChaincode(ctx context.Context, function string, args []string) (*QueryResponse, error) {
+// QueryChaincode queries a chaincode function on the given channel through the
+// configured backend.
+func (fc *FabricClient) QueryChaincode(ctx context.Context, channel, function string, args []string) (*QueryResponse, error) {
 	if !fc.Config.SyncEnabled {
 		return nil, fmt.Errorf("fabric sync is disabled")
 	}
-	return fc.backend.Query(ctx, function, args)
+	return fc.backend.Query(ctx, channel, function, args)
 }
 
-// StoreMerkleBatch stores a Merkle batch in the Fabric blockchain. It maps to
-// the chaincode's StoreMerkleRoot(batchID, merkleRoot, timestamp, numLogs, logIDs)
-// transaction.
-func (fc *FabricClient) StoreMerkleBatch(ctx context.Context, batchID, merkleRoot string, numLogs int, logIDs []string) (*InvokeResponse, error) {
+// StoreMerkleBatch stores a Merkle batch on the given channel. It maps to the
+// chaincode's StoreMerkleRoot(batchID, merkleRoot, timestamp, numLogs, logIDs)
+// transaction. Pass the channel resolved for the tenant (Config.ChannelForTenant).
+func (fc *FabricClient) StoreMerkleBatch(ctx context.Context, channel, batchID, merkleRoot string, numLogs int, logIDs []string) (*InvokeResponse, error) {
 	logIDsJSON, err := json.Marshal(logIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal log IDs: %w", err)
@@ -72,18 +74,18 @@ func (fc *FabricClient) StoreMerkleBatch(ctx context.Context, batchID, merkleRoo
 		string(logIDsJSON),
 	}
 
-	return fc.InvokeChaincode(ctx, "StoreMerkleRoot", args)
+	return fc.InvokeChaincode(ctx, channel, "StoreMerkleRoot", args)
 }
 
-// VerifyMerkleBatch reads a Merkle batch from the Fabric blockchain (chaincode
+// VerifyMerkleBatch reads a Merkle batch from the given channel (chaincode
 // QueryMerkleBatch).
-func (fc *FabricClient) VerifyMerkleBatch(ctx context.Context, batchID string) (*QueryResponse, error) {
-	return fc.QueryChaincode(ctx, "QueryMerkleBatch", []string{batchID})
+func (fc *FabricClient) VerifyMerkleBatch(ctx context.Context, channel, batchID string) (*QueryResponse, error) {
+	return fc.QueryChaincode(ctx, channel, "QueryMerkleBatch", []string{batchID})
 }
 
-// GetBatchHistory retrieves the history of a batch from Fabric.
-func (fc *FabricClient) GetBatchHistory(ctx context.Context, batchID string) (*QueryResponse, error) {
-	return fc.QueryChaincode(ctx, "getBatchHistory", []string{batchID})
+// GetBatchHistory retrieves the history of a batch from the given channel.
+func (fc *FabricClient) GetBatchHistory(ctx context.Context, channel, batchID string) (*QueryResponse, error) {
+	return fc.QueryChaincode(ctx, channel, "getBatchHistory", []string{batchID})
 }
 
 // HealthCheck performs a health check on the Fabric connection.

@@ -90,10 +90,10 @@ func TestFabricDisabled(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	if _, err := client.InvokeChaincode(ctx, "test", []string{}); err == nil {
+	if _, err := client.InvokeChaincode(ctx, "logchannel", "test", []string{}); err == nil {
 		t.Error("Expected error when sync is disabled")
 	}
-	if _, err := client.QueryChaincode(ctx, "test", []string{}); err == nil {
+	if _, err := client.QueryChaincode(ctx, "logchannel", "test", []string{}); err == nil {
 		t.Error("Expected error when sync is disabled")
 	}
 }
@@ -112,7 +112,7 @@ func TestStoreMerkleBatchDisabled(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if _, err := client.StoreMerkleBatch(context.Background(), "batch_123", "merkle_abc", 3, []string{"l1", "l2"}); err == nil {
+	if _, err := client.StoreMerkleBatch(context.Background(), "logchannel", "batch_123", "merkle_abc", 3, []string{"l1", "l2"}); err == nil {
 		t.Error("Expected error when sync is disabled")
 	}
 }
