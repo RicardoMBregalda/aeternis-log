@@ -1,0 +1,100 @@
+# Parallel API stack pointing at the production-staging Fabric network (Phase F).
+# Mirrors docker-compose.yml but on tcc_log_network_prod, with shifted host ports and
+# the Org1 identity issued by the prod Fabric CA. The dev API stack stays untouched.
+#
+#   docker compose -f docker-compose.prod.yml -p tcc-prod up -d --build
+#
+# The Fabric Gateway connects to peer0.org1 and collects the MAJORITY (2/3) endorsement
+# from Org2/Org3 automatically via service discovery — no client-side peer list needed.
+
+services:
+  go-api-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tcc-go-api:latest
+    container_name: tcc-go-api-prod
+    hostname: go-api-prod
+    # The CA-issued crypto is owned root with 0700 dirs / 0600 keys. Run as root to
+    # read the read-only mount without loosening on-disk perms (staging). Phase G
+    # replaces this with the key provisioned as a runtime secret / PKCS#11.
+    user: "0:0"
+    ports:
+      - "5002:5001"   # API port (dev uses 5001)
+      - "9091:9090"   # Metrics port (dev uses 9090)
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - wal-data-prod:/var/log/tcc-wal
+      # PROD crypto: the whole organizations/ tree issued by the prod Fabric CAs.
+      - ../hybrid-architecture/fabric-network/prod/organizations:/fabric-crypto:ro
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=5001
+      - MONGO_URL=mongodb://mongodb-prod:27017
+      - REDIS_HOST=redis-prod
+      - REDIS_PORT=6379
+      - WAL_DIRECTORY=/var/log/tcc-wal
+      - LOG_LEVEL=info
+      # Fabric: gateway transport against the prod network, Org1 identity from the CA.
+      - FABRIC_TRANSPORT=gateway
+      - FABRIC_CHANNEL=logchannel
+      - FABRIC_CHAINCODE=logchaincode
+      - FABRIC_MSP_ID=Org1MSP
+      - FABRIC_GATEWAY_PEER_ENDPOINT=peer0.org1.example.com:7051
+      - FABRIC_GATEWAY_SERVER_NAME_OVERRIDE=peer0.org1.example.com
+      - FABRIC_GATEWAY_PEER_TLS_CA_FILE=/fabric-crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+      # CA-issued MSP names the signcert cert.pem (not the cryptogen Admin@...-cert.pem).
+      - FABRIC_IDENTITY_CERT_FILE=/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/signcerts/cert.pem
+      - FABRIC_IDENTITY_KEY_DIR=/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore
+    depends_on:
+      - mongodb-prod
+      - redis-prod
+    networks:
+      - prod-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  mongodb-prod:
+    image: mongo:7.0
+    container_name: tcc-mongodb-prod
+    hostname: mongodb-prod
+    ports:
+      - "27018:27017"   # dev uses 27017
+    volumes:
+      - mongodb-data-prod:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=logdb
+    networks:
+      - prod-net
+    restart: unless-stopped
+
+  redis-prod:
+    image: redis:7-alpine
+    container_name: tcc-redis-prod
+    hostname: redis-prod
+    ports:
+      - "6380:6379"     # dev uses 6379
+    volumes:
+      - redis-data-prod:/data
+    command: redis-server --appendonly yes --appendfsync always
+    networks:
+      - prod-net
+    restart: unless-stopped
+
+volumes:
+  mongodb-data-prod:
+    driver: local
+  redis-data-prod:
+    driver: local
+  wal-data-prod:
+    driver: local
+
+networks:
+  prod-net:
+    external: true
+    name: tcc_log_network_prod

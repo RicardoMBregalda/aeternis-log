@@ -107,7 +107,17 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
   `scripts/deploy-chaincode-prod.sh`.
 - **Risco:** médio (vários pontos onde o MSP/endpoint errado falha silenciosamente).
 
-### Fase F — API/gateway coletando endosso cross-org
+### Fase F — API/gateway coletando endosso cross-org  *(CONCLUÍDA 2026-06-06)*
+> **Resultado:** **zero mudança de código** foi necessária — `proposal.Endorse()` do
+> `fabric-gateway` já coleta a `MAJORITY` 2/3 via **service discovery** (a discovery a
+> partir da Org1 retorna os 3 orgs no plano de endosso; anchor peers vieram no genesis).
+> Configurado via env (`FABRIC_*`) numa **stack de API paralela**
+> (`api/docker-compose.prod.yml`, rede `tcc_log_network_prod`, portas 5002/9091,
+> identidade Org1 emitida pela CA). E2E provado: create → batch/anchor (`tx_id` real) →
+> verify `VALID` → tamper → `CORRUPTED` (409); batch lido on-chain pela Org3. A API dev
+> (:5001) seguiu intacta. _Nota:_ a API prod roda como root para ler o crypto do CA
+> (dirs 0700 / chave 0600) sem afrouxar perms em disco — substituído por secret na Fase G.
+
 - O `fabric-gateway` (já default) coleta endosso de várias orgs **via service
   discovery**, desde que o peer-gateway da org da API conheça os endpoints e CAs das
   outras orgs. Verificar:
@@ -143,12 +153,13 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
 
 ## 4. Ordem recomendada e esforço  *(ajustada às decisões)*
 
-1. **A** (Fabric CA por org) + **B** (Raft 3 + osnadmin) + **C** (3 peer orgs) +
+1. ✅ **A** (Fabric CA por org) + **B** (Raft 3 + osnadmin) + **C** (3 peer orgs) +
    **D** (configtx 3 orgs, `MAJORITY` 2/3) + **E** (lifecycle com 3 aprovações) —
-   núcleo multi-org com identidades reais, validável localmente. *Risco concentrado em A e B.*
-2. **F** — API ancorando com endosso 2/3 via discovery. *Fecha o E2E do produto.*
-3. **H** — um canal Fabric por tenant. *Isolamento no nível de ledger (no MVP).*
-4. **G** — hardening (segredos como secret, TLS/DNS, backup/DR, observabilidade).
+   núcleo multi-org com identidades reais, validável localmente. **Concluído 2026-06-06.**
+2. ✅ **F** — API ancorando com endosso 2/3 via discovery. *Fecha o E2E do produto.*
+   **Concluído 2026-06-06.**
+3. ⬜ **H** — um canal Fabric por tenant. *Isolamento no nível de ledger (no MVP).*
+4. ⬜ **G** — hardening (segredos como secret, TLS/DNS, backup/DR, observabilidade).
 
 ## 5. Validação E2E (critérios de aceite)
 
@@ -157,25 +168,29 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
       derrubar 1 orderer sem parar de ancorar. ✅ _(validado 2026-06-06)_
 - [x] `peer lifecycle chaincode querycommitted` confirma o chaincode (`logchaincode`
       v1.0 seq 1) com a política 2/3. ✅
-- [x] Ancoragem **com endosso de ≥2 orgs** retorna `tx_id` real, commit `VALID` nos
-      peers endossantes (`StoreMerkleRoot` endossado por Org1+Org2, lido de volta pela
-      Org3). ✅ _Nota:_ validado via **CLI** (`smoke-test.sh`); a ancoragem pela **API**
-      contra esta rede é a **Fase F** (abaixo, pendente).
+- [x] Ancoragem **com endosso de ≥2 orgs** retorna `tx_id` real, commit `VALID`. Provado
+      em dois níveis: **CLI** (`smoke-test.sh`, `StoreMerkleRoot` por Org1+Org2, lido pela
+      Org3) e **API** (Fase F — gateway coleta a `MAJORITY` 2/3 via discovery; commit
+      `VALID` sob a política 2/3 ⇒ ≥2 endossos). ✅
 - [x] Derrubar **1 org** e ainda ancorar (2/3 tolera); derrubar **2 orgs** → ancoragem
       **rejeitada** (prova de que o endosso é real). ✅ _(`fault-tolerance.sh`)_
-- [ ] Verificação de integridade `VALID`/`CORRUPTED` (tamper) **pela API** contra esta
-      rede — depende da Fase F (API apontada para a rede prod).
+- [x] Verificação de integridade `VALID`/`CORRUPTED` (tamper) **pela API** contra esta
+      rede. ✅ _(Fase F: criar records → batch/anchor → verify `VALID`; adulterar 1 record
+      no Mongo → verify `CORRUPTED` 409.)_
 - [x] A rede de dev (`make up`) continua intacta e validando em paralelo
-      (`tcc_log_network` + containers `*.example.com` no ar). ✅
+      (`tcc_log_network` + containers `*.example.com` + API dev na :5001 no ar). ✅
 
-> **Onde parou (2026-06-06):** o núcleo multi-org (Fases **A–E** da seção 4) está
-> **deployado e validado** — 4 CAs, Raft de 3 orderers via channel participation, 3 peer
-> orgs com CouchDB, canal `logchannel`, `logchaincode` commitado com `MAJORITY` 2/3, e
-> ancoragem cross-org provada (incl. tolerância a falhas). **Restam:** Fase **F** (API
-> ancorando contra a rede prod via discovery), Fase **H** (canal por tenant) e Fase **G**
-> (hardening). Scripts de operação/validação em `prod/scripts/`:
-> `registerEnroll.sh`, `join-peers.sh`, `deploy-chaincode.sh`, `smoke-test.sh`,
-> `status.sh`, `orderer-status.sh`, `anchor.sh`, `fault-tolerance.sh`.
+> **Onde parou (2026-06-06):** o núcleo multi-org (Fases **A–E**) **e a Fase F** (API
+> ancorando contra a rede prod) estão **deployados e validados** — 4 CAs, Raft de 3
+> orderers via channel participation, 3 peer orgs com CouchDB, canal `logchannel`,
+> `logchaincode` commitado com `MAJORITY` 2/3, ancoragem cross-org (incl. tolerância a
+> falhas) e o fluxo tamper-evident provado **pela API** (anchor → verify VALID → tamper →
+> CORRUPTED). **Restam:** Fase **H** (canal por tenant — isolamento no nível de ledger) e
+> Fase **G** (hardening: segredos como secret, TLS/DNS reais, multi-host, backup/DR).
+> Scripts em `prod/scripts/`: `registerEnroll.sh`, `join-peers.sh`, `deploy-chaincode.sh`,
+> `smoke-test.sh`, `status.sh`, `orderer-status.sh`, `anchor.sh`, `fault-tolerance.sh`,
+> `discover-peers.sh`, `query-batch.sh`. Stack da API prod:
+> `api/docker-compose.prod.yml` (rede `tcc_log_network_prod`, portas 5002/9091).
 
 ## 6. Riscos e mitigação (resumo)
 
