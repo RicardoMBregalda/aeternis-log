@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Anchor — Integrity Dashboard</title>
+  <style>
+    :root { --bg:#0f172a; --panel:#1e293b; --line:#334155; --fg:#e2e8f0; --muted:#94a3b8;
+            --accent:#38bdf8; --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+    header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+    header h1 { font-size:18px; margin:0; font-weight:600; }
+    header .dot { width:10px; height:10px; border-radius:50%; background:var(--muted); }
+    header .dot.up { background:var(--ok); } header .dot.down { background:var(--bad); }
+    main { max-width:1100px; margin:0 auto; padding:24px; display:grid; gap:24px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px; }
+    .panel h2 { margin:0 0 14px; font-size:15px; font-weight:600; color:var(--accent); }
+    label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    input { width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--line);
+            border-radius:6px; color:var(--fg); font:inherit; }
+    .row { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:12px; align-items:end; }
+    button { padding:8px 14px; background:var(--accent); color:#04222f; border:0; border-radius:6px;
+             font-weight:600; cursor:pointer; }
+    button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; }
+    .stat { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:14px; }
+    .stat .n { font-size:24px; font-weight:700; }
+    .stat .l { font-size:12px; color:var(--muted); }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
+    th { color:var(--muted); font-weight:600; }
+    code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+    .mono { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--muted); }
+    .badge { padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+    .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); }
+    .badge.bad { background:rgba(239,68,68,.15); color:var(--bad); }
+    .badge.warn { background:rgba(245,158,11,.15); color:var(--warn); }
+    .err { color:var(--bad); font-size:13px; }
+    .muted { color:var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <span id="status-dot" class="dot"></span>
+    <h1>Anchor — Tamper-Evident Integrity Dashboard</h1>
+    <span id="status-text" class="muted" style="margin-left:auto"></span>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Connection</h2>
+      <div class="row">
+        <div><label>API base URL</label><input id="base" placeholder="http://localhost:5001" /></div>
+        <div><label>API key (optional)</label><input id="key" placeholder="X-API-Key" /></div>
+        <div><label>Records domain</label><input id="domain" placeholder="audit" /></div>
+        <div><button id="connect">Connect</button></div>
+      </div>
+      <p id="conn-err" class="err"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Sync status</h2>
+      <div id="stats" class="stats"><span class="muted">Connect to load stats…</span></div>
+    </section>
+
+    <section class="panel">
+      <h2>Log batches</h2>
+      <p class="muted">Anchored Merkle batches from the <code>logs</code> domain. Click verify to recompute
+        and compare against the anchored root.</p>
+      <table>
+        <thead><tr><th>Batch ID</th><th>Merkle root</th><th>#</th><th>Synced</th><th>Integrity</th></tr></thead>
+        <tbody id="batches"><tr><td colspan="5" class="muted">—</td></tr></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Verify a record batch</h2>
+      <p class="muted">Recompute a domain batch's Merkle root server-side and compare with the anchored one.</p>
+      <div class="row">
+        <div><label>Batch ID</label><input id="rec-batch" placeholder="audit-…" /></div>
+        <div></div><div></div>
+        <div><button id="verify-rec" class="ghost">Verify</button></div>
+      </div>
+      <p id="rec-result"></p>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const store = {
+      get base()   { return localStorage.getItem("anchor.base")   || "http://localhost:5001"; },
+      get key()    { return localStorage.getItem("anchor.key")    || ""; },
+      get domain() { return localStorage.getItem("anchor.domain") || "audit"; },
+      save(b, k, d) {
+        localStorage.setItem("anchor.base", b);
+        localStorage.setItem("anchor.key", k);
+        localStorage.setItem("anchor.domain", d);
+      },
+    };
+
+    function headers() {
+      const h = { "Content-Type": "application/json" };
+      const k = $("key").value.trim();
+      if (k) h["X-API-Key"] = k;
+      return h;
+    }
+    function api(path) { return $("base").value.trim().replace(/\/$/, "") + path; }
+
+    async function req(method, path) {
+      const res = await fetch(api(path), { method, headers: headers() });
+      const text = await res.text();
+      let body; try { body = JSON.parse(text); } catch { body = text; }
+      return { ok: res.ok, status: res.status, body };
+    }
+
+    function badge(text, kind) { return `<span class="badge ${kind}">${text}</span>`; }
+    function short(s, n = 16) { return s && s.length > n ? s.slice(0, n) + "…" : (s || "—"); }
+
+    async function loadHealth() {
+      try {
+        const r = await req("GET", "/health");
+        const up = r.ok && r.body && r.body.services && r.body.services.fabric === "healthy";
+        $("status-dot").className = "dot " + (r.ok ? "up" : "down");
+        $("status-text").textContent = r.ok
+          ? `healthy · fabric ${r.body.services.fabric} · mongo ${r.body.services.mongodb}`
+          : `unreachable (${r.status})`;
+      } catch (e) {
+        $("status-dot").className = "dot down";
+        $("status-text").textContent = "unreachable";
+      }
+    }
+
+    async function loadStats() {
+      const el = $("stats");
+      try {
+        const r = await req("GET", "/stats/sync");
+        if (!r.ok) { el.innerHTML = `<span class="err">stats error ${r.status}</span>`; return; }
+        const s = r.body || {};
+        const cells = Object.entries(flatten(s)).slice(0, 8)
+          .map(([k, v]) => `<div class="stat"><div class="n">${v}</div><div class="l">${k}</div></div>`);
+        el.innerHTML = cells.join("") || '<span class="muted">no stats</span>';
+      } catch (e) { el.innerHTML = `<span class="err">${e.message}</span>`; }
+    }
+
+    function flatten(obj, prefix = "") {
+      const out = {};
+      for (const [k, v] of Object.entries(obj || {})) {
+        const key = prefix ? `${prefix}.${k}` : k;
+        if (v && typeof v === "object" && !Array.isArray(v)) Object.assign(out, flatten(v, key));
+        else out[key] = Array.isArray(v) ? v.length : v;
+      }
+      return out;
+    }
+
+    async function loadBatches() {
+      const tb = $("batches");
+      const r = await req("GET", "/merkle/batches");
+      if (!r.ok) { tb.innerHTML = `<tr><td colspan="5" class="err">error ${r.status}</td></tr>`; return; }
+      const batches = (r.body && r.body.batches) || [];
+      if (!batches.length) { tb.innerHTML = '<tr><td colspan="5" class="muted">no batches yet</td></tr>'; return; }
+      tb.innerHTML = batches.map((b) => {
+        const id = b.batch_id || b.batchId || "";
+        const synced = b.synced === false ? badge("pending", "warn") : badge("synced", "ok");
+        return `<tr>
+          <td><code>${short(id, 22)}</code></td>
+          <td class="mono">${short(b.merkle_root, 20)}</td>
+          <td>${b.num_logs ?? b.numLogs ?? "—"}</td>
+          <td>${synced}</td>
+          <td><button class="ghost" data-batch="${id}">verify</button> <span id="iv-${id}"></span></td>
+        </tr>`;
+      }).join("");
+      tb.querySelectorAll("button[data-batch]").forEach((btn) =>
+        btn.addEventListener("click", () => verifyLogBatch(btn.dataset.batch)));
+    }
+
+    async function verifyLogBatch(id) {
+      const cell = $("iv-" + id);
+      cell.textContent = "…";
+      const r = await req("POST", "/merkle/verify/" + encodeURIComponent(id));
+      const valid = r.body && (r.body.is_valid || r.body.integrity === "VALID");
+      cell.innerHTML = valid ? badge("VALID", "ok") : badge("CORRUPTED", "bad");
+    }
+
+    async function verifyRecordBatch() {
+      const id = $("rec-batch").value.trim();
+      const dom = $("domain").value.trim() || "audit";
+      const out = $("rec-result");
+      if (!id) { out.innerHTML = '<span class="err">enter a batch id</span>'; return; }
+      out.textContent = "verifying…";
+      const r = await req("POST", `/api/v1/${encodeURIComponent(dom)}/records/verify/${encodeURIComponent(id)}`);
+      if (r.status === 404) { out.innerHTML = '<span class="err">batch not found</span>'; return; }
+      const b = r.body || {};
+      const valid = b.is_valid || b.integrity === "VALID";
+      out.innerHTML = `${valid ? badge("VALID", "ok") : badge("CORRUPTED", "bad")}
+        <span class="mono"> original=${short(b.original_merkle_root, 16)} recalculated=${short(b.recalculated_merkle_root, 16)}</span>`;
+    }
+
+    async function connect() {
+      $("conn-err").textContent = "";
+      store.save($("base").value.trim(), $("key").value.trim(), $("domain").value.trim());
+      try {
+        await loadHealth();
+        await Promise.all([loadStats(), loadBatches()]);
+      } catch (e) { $("conn-err").textContent = e.message; }
+    }
+
+    // init
+    $("base").value = store.base; $("key").value = store.key; $("domain").value = store.domain;
+    $("connect").addEventListener("click", connect);
+    $("verify-rec").addEventListener("click", verifyRecordBatch);
+    connect();
+  </script>
+</body>
+</html>
