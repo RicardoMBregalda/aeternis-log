@@ -49,14 +49,16 @@ fabric:
   query_timeout: 10s
   transport: "gateway"
   tls_enabled: true
-  # Gateway (gRPC) identity: Org1, issued by the prod Fabric CA. Paths under the
-  # prod organizations/ tree mounted at /fabric-crypto.
+  # Gateway (gRPC) identity: Org1, issued by the prod Fabric CA. Phase G: the API
+  # mounts only its own least-privilege identity bundle at /fabric-identity (admin
+  # cert + key 0400 + peer TLS CA), owned by the runtime uid — not the whole
+  # organizations/ tree. Built by prod/scripts/build-api-identity.sh.
   msp_id: "Org1MSP"
   gateway_peer_endpoint: "peer0.org1.example.com:7051"
   gateway_server_name_override: "peer0.org1.example.com"
-  gateway_peer_tls_ca_file: "/fabric-crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
-  identity_cert_file: "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/signcerts/cert.pem"
-  identity_key_dir: "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore"
+  gateway_peer_tls_ca_file: "/fabric-identity/tls/ca.crt"
+  identity_cert_file: "/fabric-identity/signcerts/cert.pem"
+  identity_key_dir: "/fabric-identity/keystore"
   # Phase H: per-tenant channel. Tenant "acme" anchors to its own ledger;
   # unmapped tenants (e.g. "default") anchor to `channel` above.
   tenant_channels:

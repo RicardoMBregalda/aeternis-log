@@ -15,10 +15,13 @@ services:
     image: tcc-go-api:latest
     container_name: tcc-go-api-prod
     hostname: go-api-prod
-    # The CA-issued crypto is owned root with 0700 dirs / 0600 keys. Run as root to
-    # read the read-only mount without loosening on-disk perms (staging). Phase G
-    # replaces this with the key provisioned as a runtime secret / PKCS#11.
-    user: "0:0"
+    mem_limit: 512m
+    cpus: 1.0
+    # Phase G hardening: run as the image's non-root uid (1000) and mount only the
+    # API's least-privilege identity bundle (built by build-api-identity.sh, owned
+    # 1000, key 0400) — no run-as-root, no whole-org-tree mount. Real prod should
+    # source the key from an HSM/PKCS#11 or a k8s/swarm secret (see runbook).
+    user: "1000:1000"
     ports:
       - "5002:5001"   # API port (dev uses 5001)
       - "9091:9090"   # Metrics port (dev uses 9090)
@@ -27,8 +30,9 @@ services:
       # identity, tenant_channels). See api/config.prod.yaml.
       - ./config.prod.yaml:/app/config.yaml:ro
       - wal-data-prod:/var/log/tcc-wal
-      # PROD crypto: the whole organizations/ tree issued by the prod Fabric CAs.
-      - ../hybrid-architecture/fabric-network/prod/organizations:/fabric-crypto:ro
+      # Least-privilege identity bundle (Phase G): only Org1's admin cert+key + peer
+      # TLS CA, owned by uid 1000. Built by prod/scripts/build-api-identity.sh.
+      - ../hybrid-architecture/fabric-network/prod/api-identity/org1:/fabric-identity:ro
     environment:
       - LOG_LEVEL=info
     depends_on:
@@ -48,6 +52,8 @@ services:
     image: mongo:7.0
     container_name: tcc-mongodb-prod
     hostname: mongodb-prod
+    mem_limit: 1g
+    cpus: 1.0
     ports:
       - "27018:27017"   # dev uses 27017
     volumes:
@@ -62,6 +68,8 @@ services:
     image: redis:7-alpine
     container_name: tcc-redis-prod
     hostname: redis-prod
+    mem_limit: 512m
+    cpus: 0.5
     ports:
       - "6380:6379"     # dev uses 6379
     volumes:

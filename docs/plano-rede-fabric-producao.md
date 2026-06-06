@@ -130,7 +130,22 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
   `api/internal/fabric/*` (gateway), `config.yaml`.
 - **Risco:** médio. É onde "rede pronta" vira "produto ancora de verdade".
 
-### Fase G — Segredos, TLS e hardening
+### Fase G — Segredos, TLS e hardening  *(CONCLUÍDA no staging 2026-06-06; multi-host documentado)*
+> **Resultado:** itens aplicáveis ao staging de 1 host **feitos e verificados**; itens que
+> dependem de infra real **documentados** no [runbook de operação/DR](runbook-operacao-prod.md).
+> - ✅ **API non-root + identidade de menor privilégio:** `build-api-identity.sh` gera um
+>   bundle só com o cert/chave (`0400`) da Org1 + TLS CA, dono uid 1000; o compose monta só
+>   isso (não a árvore `organizations/`) e roda como uid 1000 (removido o `user: root`).
+>   Testado: API sobe non-root, lê a chave `0400`, ancora e verifica `VALID`.
+> - ✅ **Limites de recurso por nó** (`mem_limit`/`cpus`) nos 3 composes (peers/couch/
+>   orderers/CAs/cli + API/Mongo/Redis); validados (`docker compose config`) e aplicados+
+>   verificados no stack da API.
+> - ✅ **Backup de ledger + DR:** `backup-ledger.sh` (tar.gz por orderer/peer; CouchDB é
+>   derivado) + procedimento de restore/DR no runbook.
+> - ⬜ **Requer infra real (multi-host):** HSM/PKCS#11 ou secret manager para as chaves,
+>   DNS real + rotação de cert de orderer (via channel config update), backup offsite/DR
+>   drills, observabilidade central. Tudo detalhado no runbook.
+
 - Chaves privadas como *secret* do runtime (não 0644); idealmente PKCS#11/HSM para a
   identidade da API e dos orderers.
 - TLS com SANs/DNS reais por org; rotação/renovação de certificados (a CA da Fase A2).
@@ -170,8 +185,9 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
    **Concluído 2026-06-06.**
 3. ✅ **H** — um canal Fabric por tenant. *Isolamento no nível de ledger (no MVP).*
    **Concluído 2026-06-06.**
-4. ⬜ **G** — hardening (segredos como secret, TLS/DNS, backup/DR, observabilidade).
-   *Último item em aberto do plano de produção.*
+4. ✅ **G** — hardening. **Concluído no staging 2026-06-06** (API non-root + identidade de
+   menor privilégio, limites de recurso, backup/DR); itens de **multi-host real** (HSM/DNS/
+   offsite) documentados no [runbook](runbook-operacao-prod.md).
 
 ## 5. Validação E2E (critérios de aceite)
 
@@ -192,17 +208,20 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
 - [x] A rede de dev (`make up`) continua intacta e validando em paralelo
       (`tcc_log_network` + containers `*.example.com` + API dev na :5001 no ar). ✅
 
-> **Onde parou (2026-06-06):** Fases **A–F** **e H** estão **deployadas e validadas** — 4
+> **Onde parou (2026-06-06):** **todas as fases A–H concluídas** no staging de 1 host — 4
 > CAs, Raft de 3 orderers via channel participation, 3 peer orgs com CouchDB, canal
 > `logchannel`, `logchaincode` commitado com `MAJORITY` 2/3, ancoragem cross-org (incl.
 > tolerância a falhas), fluxo tamper-evident **pela API** (anchor → verify VALID → tamper →
-> CORRUPTED) e **canal por tenant** (`acme-channel`) com isolamento no nível de ledger
-> provado. **Resta apenas a Fase G** (hardening: segredos como secret, TLS/DNS reais,
-> multi-host, backup/DR). Scripts em `prod/scripts/`: `registerEnroll.sh`, `join-peers.sh`,
-> `deploy-chaincode.sh`, `smoke-test.sh`, `status.sh`, `orderer-status.sh`, `anchor.sh`,
-> `fault-tolerance.sh`, `discover-peers.sh`, `query-batch.sh`, `create-tenant-channel.sh`,
-> `tenant-channel-steps.sh`. Stacks da API prod: `api/docker-compose.prod.yml` +
-> `api/config.prod.yaml` (rede `tcc_log_network_prod`, portas 5002/9091).
+> CORRUPTED), **canal por tenant** (`acme-channel`, isolamento no nível de ledger) e
+> **hardening** (Fase G: API non-root + identidade de menor privilégio, limites de recurso,
+> backup/DR). O que resta é **infra real multi-host** (HSM/DNS/offsite), detalhado no
+> [runbook de operação/DR](runbook-operacao-prod.md). Scripts em `prod/scripts/`:
+> `registerEnroll.sh`, `join-peers.sh`, `deploy-chaincode.sh`, `smoke-test.sh`, `status.sh`,
+> `orderer-status.sh`, `anchor.sh`, `fault-tolerance.sh`, `discover-peers.sh`,
+> `query-batch.sh`, `create-tenant-channel.sh`, `tenant-channel-steps.sh`,
+> `build-api-identity.sh`, `backup-ledger.sh`. Stacks da API prod:
+> `api/docker-compose.prod.yml` + `api/config.prod.yaml` (rede `tcc_log_network_prod`,
+> portas 5002/9091).
 
 ## 6. Riscos e mitigação (resumo)
 

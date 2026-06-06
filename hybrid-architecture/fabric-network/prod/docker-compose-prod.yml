@@ -20,6 +20,8 @@ services:
   orderer0.example.com:
     image: hyperledger/fabric-orderer:2.5
     container_name: orderer0.prod
+    mem_limit: 512m
+    cpus: 0.5
     environment:
       - FABRIC_LOGGING_SPEC=INFO
       - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
@@ -57,6 +59,8 @@ services:
   orderer1.example.com:
     image: hyperledger/fabric-orderer:2.5
     container_name: orderer1.prod
+    mem_limit: 512m
+    cpus: 0.5
     environment:
       - FABRIC_LOGGING_SPEC=INFO
       - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
@@ -94,6 +98,8 @@ services:
   orderer2.example.com:
     image: hyperledger/fabric-orderer:2.5
     container_name: orderer2.prod
+    mem_limit: 512m
+    cpus: 0.5
     environment:
       - FABRIC_LOGGING_SPEC=INFO
       - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
@@ -132,6 +138,8 @@ services:
   couchdb-org1:
     image: couchdb:3.2
     container_name: couchdb.org1.prod
+    mem_limit: 1g
+    cpus: 1.0
     environment:
       - COUCHDB_USER=admin
       - COUCHDB_PASSWORD=password
@@ -143,6 +151,8 @@ services:
   couchdb-org2:
     image: couchdb:3.2
     container_name: couchdb.org2.prod
+    mem_limit: 1g
+    cpus: 1.0
     environment:
       - COUCHDB_USER=admin
       - COUCHDB_PASSWORD=password
@@ -154,6 +164,8 @@ services:
   couchdb-org3:
     image: couchdb:3.2
     container_name: couchdb.org3.prod
+    mem_limit: 1g
+    cpus: 1.0
     environment:
       - COUCHDB_USER=admin
       - COUCHDB_PASSWORD=password
@@ -166,6 +178,8 @@ services:
   peer0.org1.example.com:
     image: hyperledger/fabric-peer:2.5
     container_name: peer0.org1.prod
+    mem_limit: 1g
+    cpus: 1.0
     environment:
       - FABRIC_LOGGING_SPEC=INFO
       - CORE_PEER_TLS_ENABLED=true
@@ -208,6 +222,8 @@ services:
   peer0.org2.example.com:
     image: hyperledger/fabric-peer:2.5
     container_name: peer0.org2.prod
+    mem_limit: 1g
+    cpus: 1.0
     environment:
       - FABRIC_LOGGING_SPEC=INFO
       - CORE_PEER_TLS_ENABLED=true
@@ -250,6 +266,8 @@ services:
   peer0.org3.example.com:
     image: hyperledger/fabric-peer:2.5
     container_name: peer0.org3.prod
+    mem_limit: 1g
+    cpus: 1.0
     environment:
       - FABRIC_LOGGING_SPEC=INFO
       - CORE_PEER_TLS_ENABLED=true
@@ -293,6 +311,8 @@ services:
   cli:
     image: hyperledger/fabric-tools:2.5
     container_name: cli.prod
+    mem_limit: 512m
+    cpus: 0.5
     tty: true
     stdin_open: true
     environment:

@@ -12,6 +12,8 @@ services:
   ca.org1.example.com:
     image: hyperledger/fabric-ca:1.5
     container_name: ca.org1.prod
+    mem_limit: 256m
+    cpus: 0.5
     environment:
       - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
       - FABRIC_CA_SERVER_CA_NAME=ca-org1
@@ -28,6 +30,8 @@ services:
   ca.org2.example.com:
     image: hyperledger/fabric-ca:1.5
     container_name: ca.org2.prod
+    mem_limit: 256m
+    cpus: 0.5
     environment:
       - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
       - FABRIC_CA_SERVER_CA_NAME=ca-org2
@@ -44,6 +48,8 @@ services:
   ca.org3.example.com:
     image: hyperledger/fabric-ca:1.5
     container_name: ca.org3.prod
+    mem_limit: 256m
+    cpus: 0.5
     environment:
       - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
       - FABRIC_CA_SERVER_CA_NAME=ca-org3
@@ -60,6 +66,8 @@ services:
   ca.orderer.example.com:
     image: hyperledger/fabric-ca:1.5
     container_name: ca.orderer.prod
+    mem_limit: 256m
+    cpus: 0.5
     environment:
       - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
       - FABRIC_CA_SERVER_CA_NAME=ca-orderer
