@@ -53,10 +53,12 @@ section "Infra / health"
 req GET /health;  ck_code 200 "GET /health"; ck_has '"fabric":"healthy"' "fabric healthy"
 ck_has '"mongodb":"healthy"' "mongodb healthy"; ck_has '"redis":"healthy"' "redis healthy"
 req GET /;        ck_code 200 "GET / (root)"
-mbody=$(curl -s -w $'\n%{http_code}' "$METRICS"); mcode=$(echo "$mbody" | tail -1)
+# Capture then substring-match: piping into `grep -q` under `set -o pipefail` makes
+# curl die with SIGPIPE (141) once grep matches, which would mark the check as failed.
+mbody=$(curl -s -w $'\n%{http_code}' "$METRICS"); mcode=${mbody##*$'\n'}
 if [ "$mcode" = 200 ]; then pass "GET metrics (HTTP 200)"; else fail "metrics endpoint (got $mcode)"; fi
-if echo "$mbody" | grep -q '^go_goroutines'; then pass "metrics expose Prometheus data (go_goroutines)"; else fail "metrics body not Prometheus"; fi
-if echo "$mbody" | grep -q '^http_requests_total'; then pass "metrics expose http_requests_total"; else fail "http_requests_total missing"; fi
+if [[ "$mbody" == *"go_goroutines "* ]]; then pass "metrics expose Prometheus data (go_goroutines)"; else fail "metrics body not Prometheus"; fi
+if [[ "$mbody" == *"http_requests_total{"* ]]; then pass "metrics expose http_requests_total"; else fail "http_requests_total missing"; fi
 
 # ---------------------------------------------------------------- auth
 if [ -n "$KEY" ]; then
@@ -105,7 +107,8 @@ BID=$(jget batch_id); TX=$(jget tx_id); CH=$(jget channel)
 if [ -n "$TX" ]; then pass "real tx_id ($TX)"; else fail "tx_id present"; fi
 if [ "$CH" = "$EXPECT_CHANNEL" ]; then pass "anchored to expected channel ($CH)"; else fail "channel: want $EXPECT_CHANNEL got $CH"; fi
 req POST "/api/v1/audit/records/verify/$BID"; ck_code 200 "verify"; ck_has '"integrity":"VALID"' "integrity VALID"
-if curl -s "$METRICS" | grep -q '^batches_anchored_total'; then pass "metrics: batches_anchored_total recorded"; else fail "batches_anchored_total missing after anchor"; fi
+mbatch=$(curl -s "$METRICS")
+if [[ "$mbatch" == *"batches_anchored_total{"* ]]; then pass "metrics: batches_anchored_total recorded"; else fail "batches_anchored_total missing after anchor"; fi
 
 if [ -n "$MONGO" ]; then
   section "Tamper detection"
