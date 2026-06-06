@@ -2,13 +2,13 @@
 
 ## Painel de Progresso
 
-> Atualizado em **2026-06-03**. Status **verificado contra o código** (não apenas marcação manual de checkbox).
+> Atualizado em **2026-06-06**. Status **verificado contra o código** (não apenas marcação manual de checkbox).
 > **Legenda:** ✅ concluído · 🟡 parcial · ⬜ pendente
 
 | Fase | Concluído | Progresso |
 |------|-----------|-----------|
 | Fase 1 — Estabilização Técnica | 8 ✅ de 8 | `▓▓▓▓▓▓▓▓` |
-| Fase 2 — Generalização do Domínio | 6 de 7 | `▓▓▓▓▓▓░` |
+| Fase 2 — Generalização do Domínio | 7 ✅ de 7 | `▓▓▓▓▓▓▓` |
 | Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
 | Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
 
@@ -51,7 +51,7 @@ Esse padrão — chamado de *Tamper-Evident Data Anchoring* — não é específ
 | ~~`fmt.Printf("DEBUG ...")` em handlers~~ ✅ **resolvido** | Substituído por logging estruturado (`zerolog`) | `internal/logger/` |
 | ~~Container names hardcoded (`peer0.org1.example.com`)~~ ✅ **resolvido** | Parametrizado por config/env (`FABRIC_PEER_CONTAINER` etc.) | `internal/fabric/client.go` |
 | ~~`DeleteLog` é no-op silencioso~~ ✅ **resolvido** | Soft delete real (`deleted_at`), preservando documento e âncora | `internal/handlers/logs.go` |
-| Rede Fabric de dev (1 org, 1 peer, 1 orderer) | Sem tolerância a falhas na blockchain | `fabric-network/` |
+| ~~Rede Fabric de dev (1 org, 1 peer, 1 orderer)~~ ✅ **resolvido** | Rede staging multi-org: 3 peer orgs, Raft de 3 orderers (tolera 1 falha), CAs separadas, endosso `MAJORITY` 2/3 — stack paralela à dev | `hybrid-architecture/fabric-network/prod/` |
 | ~~Paginação por offset~~ ✅ **resolvido** | Cursor keyset (`created_at`+`id`) opcional, com índice composto; `offset` mantido | `internal/handlers/logs.go` |
 
 ---
@@ -110,7 +110,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **`CalculateHash` configurável** — hash SHA-256 sobre `id|timestamp|source|payload canônico`; `hash_fields` opcional escolhe quais chaves do payload entram no hash (guardado no record p/ reprodutibilidade); payload canônico com chaves ordenadas (independe da ordem). _(ver changelog)_
 - [x] **Rotas `/api/v1/{domain}/records`** — CRUD genérico (create/list+cursor/get/delete soft) sob namespace de domínio, protegido pela auth. **Aditivo:** `/logs` mantido (não renomeado) para não quebrar o fluxo validado. _(ver changelog)_
 - [x] **Multi-tenancy** — o tenant é resolvido pela API key (`auth.tenants: [{id, keys}]`; `api_keys` planas → `default`) e posto no contexto; records isolados por `(tenant, domain)` em todas as operações + ancoragem (batch ID namespaced por tenant). _(ver changelog)_ ⚠️ Isolamento de storage por **campo `tenant`** (não collection-por-tenant) e **mesmo channel** Fabric — o channel-por-org depende da rede de produção (item abaixo).
-- [ ] Configurar rede Fabric de produção: mínimo 3 orgs, consenso Raft com 3 orderers, CAs separadas
+- [x] **Rede Fabric de produção (staging multi-org, 1 host)** — **3 peer orgs** (`Org1/2/3MSP`, peer + CouchDB cada), **Raft de 3 orderers** via **channel participation** (sem system-channel), **CAs separadas** (Fabric CA por org + CA do orderer, sem `cryptogen`) e política de endosso **`MAJORITY` 2/3**. Stack paralela e isolada da dev (`docker-compose-prod.yml`, rede `tcc_log_network_prod`, portas próprias, crypto em `organizations/`). `logchaincode` commitado (seq 1) e ancoragem cross-org validada — incl. **tolerância a falhas** (1 orderer down e 1 org down → ancora; 2 orgs down → rejeita). Artefatos em `hybrid-architecture/fabric-network/prod/` (`configtx.yaml`, composes, `scripts/`). _(ver changelog)_ ⚠️ **Pendente (plano de produção, pós-Fase 2):** Fase **F** (API ancorando contra a rede prod via discovery), Fase **H** (canal por tenant) e Fase **G** (hardening: segredos, TLS/DNS, multi-host). Ver [docs/plano-rede-fabric-producao.md](docs/plano-rede-fabric-producao.md).
 - [x] **Webhook/callback ao ancorar** — pacote `internal/webhook`: ao ancorar um batch (logs ou records), dispara `POST` do evento `batch.anchored` (domain, batch_id, merkle_root, num_records, tx_id, anchored_at) para `webhook.url`, assinado com HMAC-SHA256 (`X-Webhook-Signature`) quando há `secret`; entrega assíncrona com retries. Opt-in via `webhook.enabled`. _(ver changelog)_
 - [x] **SDK cliente em Go** — módulo `sdk/go` (pacote `anchor`, só stdlib): `Client` com retry automático (network/5xx) + métodos CRUD/batch/verify; **verificação de integridade local** (`ComputeHash`/`MerkleRoot`/`VerifyRecordsLocally`) que recalcula independente do servidor (no create, checa que o hash do servidor == hash local). _(ver changelog)_
 
@@ -166,6 +166,42 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-06 — Fase 2: rede Fabric de produção (staging multi-org) — **fecha a Fase 2 (7/7)**
+
+Último item da Fase 2. Sai da rede mono-org de dev para uma rede **multi-organização
+confiável**, em que ancorar exige endosso de orgs independentes. Conforme as decisões
+travadas no [plano](docs/plano-rede-fabric-producao.md): **staging multi-org em 1 host**,
+**Fabric CA por org** (sem `cryptogen`), endosso **`MAJORITY` 2/3**, **canal por tenant
+dentro do MVP** (Fase H, pós-F).
+
+- **Topologia (stack paralela e isolada da dev):** `docker-compose-ca.yml` (4 CAs:
+  `ca.org1/2/3` + `ca.orderer`) + `docker-compose-prod.yml` (Raft de **3 orderers**, **3
+  peer orgs** com CouchDB, CLI). Rede `tcc_log_network_prod`, portas deslocadas, crypto
+  em `prod/organizations/`. A rede de dev (`tcc_log_network`, `make up`) **continua no ar
+  validando em paralelo** — nada foi mutado.
+- **Identidades reais via Fabric CA** (`scripts/registerEnroll.sh`): admin/peer/user por
+  org, 3 orderers + admin do orderer org, MSP + TLS com NodeOUs. Domínio por org.
+- **Bootstrap sem system-channel:** `configtx.yaml` (profile `ThreeOrgsChannel`, `MAJORITY
+  Endorsement` = 2/3) renderizado direto no genesis do canal de aplicação; orderers com
+  `BOOTSTRAPMETHOD=none` + `CHANNELPARTICIPATION_ENABLED=true`; canal `logchannel` criado
+  via `osnadmin channel join` nos 3 orderers (`systemChannel: null`, confirmado).
+- **Peers + chaincode:** os 3 peers joinaram `logchannel` (`join-peers.sh`); `logchaincode`
+  instalado nas 3 orgs, aprovado por todas e **commitado** (v1.0 seq 1) satisfazendo a
+  `MAJORITY` (`deploy-chaincode.sh`).
+- **Validação E2E (CLI):** `smoke-test.sh` — `StoreMerkleRoot` endossado por **Org1+Org2
+  (2 de 3)**, commit `VALID` nos dois peers (txid real), lido de volta pela **Org3**.
+  `fault-tolerance.sh` — (1) Raft ancora com **1 orderer down**; (2) ancora com **1 org
+  down** (2/3); (3) **rejeita** com **2 orgs down** (prova de que o endosso é real). Rede
+  restaurada e íntegra após os testes.
+- Novos scripts de operação/diagnóstico em `prod/scripts/`: `status.sh`,
+  `orderer-status.sh`, `anchor.sh`, `fault-tolerance.sh` (além dos de deploy). Crypto e
+  blocos ficam fora do git (`.gitignore`).
+- ⚠️ **Restante do plano de produção (pós-Fase 2):** Fase **F** (API ancorando contra a
+  rede prod via service discovery — _fecha o E2E do produto_), Fase **H** (um canal Fabric
+  por tenant — isolamento no nível de ledger), Fase **G** (hardening: segredos como secret,
+  TLS/DNS reais, multi-host, backup/DR). A Fase 2 do roadmap (a **rede** configurada e
+  validada) está concluída; F/G/H são a ponte para produção real.
 
 ### 2026-06-05 — Fase 2: multi-tenancy (isolamento por API key)
 
