@@ -110,7 +110,7 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **`CalculateHash` configurável** — hash SHA-256 sobre `id|timestamp|source|payload canônico`; `hash_fields` opcional escolhe quais chaves do payload entram no hash (guardado no record p/ reprodutibilidade); payload canônico com chaves ordenadas (independe da ordem). _(ver changelog)_
 - [x] **Rotas `/api/v1/{domain}/records`** — CRUD genérico (create/list+cursor/get/delete soft) sob namespace de domínio, protegido pela auth. **Aditivo:** `/logs` mantido (não renomeado) para não quebrar o fluxo validado. _(ver changelog)_
 - [x] **Multi-tenancy** — o tenant é resolvido pela API key (`auth.tenants: [{id, keys}]`; `api_keys` planas → `default`) e posto no contexto; records isolados por `(tenant, domain)` em todas as operações + ancoragem (batch ID namespaced por tenant). _(ver changelog)_ ⚠️ Isolamento de storage por **campo `tenant`** (não collection-por-tenant) e **mesmo channel** Fabric — o channel-por-org depende da rede de produção (item abaixo).
-- [x] **Rede Fabric de produção (staging multi-org, 1 host)** — **3 peer orgs** (`Org1/2/3MSP`, peer + CouchDB cada), **Raft de 3 orderers** via **channel participation** (sem system-channel), **CAs separadas** (Fabric CA por org + CA do orderer, sem `cryptogen`) e política de endosso **`MAJORITY` 2/3**. Stack paralela e isolada da dev (`docker-compose-prod.yml`, rede `tcc_log_network_prod`, portas próprias, crypto em `organizations/`). `logchaincode` commitado (seq 1) e ancoragem cross-org validada — incl. **tolerância a falhas** (1 orderer down e 1 org down → ancora; 2 orgs down → rejeita). Artefatos em `hybrid-architecture/fabric-network/prod/` (`configtx.yaml`, composes, `scripts/`). _(ver changelog)_ ⚠️ **Pendente (plano de produção, pós-Fase 2):** Fase **F** (API ancorando contra a rede prod via discovery), Fase **H** (canal por tenant) e Fase **G** (hardening: segredos, TLS/DNS, multi-host). Ver [docs/plano-rede-fabric-producao.md](docs/plano-rede-fabric-producao.md).
+- [x] **Rede Fabric de produção (staging multi-org, 1 host)** — **3 peer orgs** (`Org1/2/3MSP`, peer + CouchDB cada), **Raft de 3 orderers** via **channel participation** (sem system-channel), **CAs separadas** (Fabric CA por org + CA do orderer, sem `cryptogen`) e política de endosso **`MAJORITY` 2/3**. Stack paralela e isolada da dev (`docker-compose-prod.yml`, rede `tcc_log_network_prod`, portas próprias, crypto em `organizations/`). `logchaincode` commitado (seq 1) e ancoragem cross-org validada — incl. **tolerância a falhas** (1 orderer down e 1 org down → ancora; 2 orgs down → rejeita). Artefatos em `hybrid-architecture/fabric-network/prod/` (`configtx.yaml`, composes, `scripts/`). _(ver changelog)_ ✅ **Fase F também concluída** (API ancora contra a rede prod com endosso 2/3 via discovery — stack paralela `api/docker-compose.prod.yml`). ⚠️ **Pendente (plano de produção, pós-Fase 2):** Fase **H** (canal por tenant) e Fase **G** (hardening: segredos, TLS/DNS, multi-host). Ver [docs/plano-rede-fabric-producao.md](docs/plano-rede-fabric-producao.md).
 - [x] **Webhook/callback ao ancorar** — pacote `internal/webhook`: ao ancorar um batch (logs ou records), dispara `POST` do evento `batch.anchored` (domain, batch_id, merkle_root, num_records, tx_id, anchored_at) para `webhook.url`, assinado com HMAC-SHA256 (`X-Webhook-Signature`) quando há `secret`; entrega assíncrona com retries. Opt-in via `webhook.enabled`. _(ver changelog)_
 - [x] **SDK cliente em Go** — módulo `sdk/go` (pacote `anchor`, só stdlib): `Client` com retry automático (network/5xx) + métodos CRUD/batch/verify; **verificação de integridade local** (`ComputeHash`/`MerkleRoot`/`VerifyRecordsLocally`) que recalcula independente do servidor (no create, checa que o hash do servidor == hash local). _(ver changelog)_
 
@@ -166,6 +166,33 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-06 — Fase F (plano de produção): API ancorando contra a rede prod (endosso 2/3 via discovery)
+
+Próximo passo após a rede: fazer o **produto** ancorar de verdade contra a rede multi-org
+(a Fase 2 do roadmap já estava fechada com a rede validada via CLI; F é a ponte para
+produção real).
+
+- **Zero mudança de código.** O `fabric-gateway` (já default) coleta a `MAJORITY` 2/3 via
+  **service discovery**: a discovery a partir da Org1 retorna os 3 orgs no plano de endosso
+  de `logchaincode` (anchor peers vieram no genesis), então `proposal.Endorse()` junta os
+  endossos sozinho — o cliente não nomeia peers. Confirmado com o `discover` CLI.
+- **Stack de API paralela** `api/docker-compose.prod.yml` (`go-api-prod` + `mongodb-prod` +
+  `redis-prod`) na rede `tcc_log_network_prod`, portas deslocadas (5002/9091). Fabric
+  configurado 100% por env `FABRIC_*` (transport gateway, channel `logchannel`, MSP
+  `Org1MSP`, endpoint/cert/identidade do crypto prod). A **API dev (:5001) ficou intacta**.
+- **Bug de runtime:** o crypto emitido pela CA é root com dirs `0700` / chave `0600`; o
+  container roda como `appuser` (uid 1000) e dava `permission denied` no boot. Fix de
+  staging: rodar a API prod como root (`user: "0:0"`) sobre o mount read-only — sem afrouxar
+  perms em disco (a chave segue `0600`); a Fase G troca por secret de runtime / PKCS#11.
+- **E2E provado pela API:** `POST /api/v1/audit/records` (×3) → `POST .../records/batch`
+  retornou `tx_id` real (`9e5da8fe…`) e `anchored:true` → `verify` **`VALID`** (root
+  recalculado == ancorado). Após adulterar 1 record no Mongo prod, `verify` **`CORRUPTED`
+  (409)**. A Org3 leu o batch on-chain (`QueryMerkleBatch`) — ledger multi-org compartilhado.
+  Commit `VALID` sob a política 2/3 ⇒ ≥2 orgs endossaram.
+- Novos scripts: `prod/scripts/discover-peers.sh`, `prod/scripts/query-batch.sh`.
+- ⚠️ **Restam (plano de produção):** Fase **H** (canal por tenant — isolamento no nível de
+  ledger) e Fase **G** (hardening).
 
 ### 2026-06-06 — Fase 2: rede Fabric de produção (staging multi-org) — **fecha a Fase 2 (7/7)**
 
