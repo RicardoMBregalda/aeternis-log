@@ -3,6 +3,8 @@ organizations/
 crypto-config-prod/
 channel-artifacts/
 system-genesis-block/
+api-identity/
+backups/
 *.tar.gz
 *.block
 *.tx
