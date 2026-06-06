@@ -9,7 +9,7 @@
 |------|-----------|-----------|
 | Fase 1 — Estabilização Técnica | 8 ✅ de 8 | `▓▓▓▓▓▓▓▓` |
 | Fase 2 — Generalização do Domínio | 7 ✅ de 7 | `▓▓▓▓▓▓▓` |
-| Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
+| Fase 3 — Experiência do Desenvolvedor | 6 ✅ de 6 | `▓▓▓▓▓▓` |
 | Fase 4 — Observabilidade e SLAs | 2 de 6 | `▓▓░░░░` |
 
 ### ✅ Concluído (verificado)
@@ -114,16 +114,16 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **Webhook/callback ao ancorar** — pacote `internal/webhook`: ao ancorar um batch (logs ou records), dispara `POST` do evento `batch.anchored` (domain, batch_id, merkle_root, num_records, tx_id, anchored_at) para `webhook.url`, assinado com HMAC-SHA256 (`X-Webhook-Signature`) quando há `secret`; entrega assíncrona com retries. Opt-in via `webhook.enabled`. _(ver changelog)_
 - [x] **SDK cliente em Go** — módulo `sdk/go` (pacote `anchor`, só stdlib): `Client` com retry automático (network/5xx) + métodos CRUD/batch/verify; **verificação de integridade local** (`ComputeHash`/`MerkleRoot`/`VerifyRecordsLocally`) que recalcula independente do servidor (no create, checa que o hash do servidor == hash local). _(ver changelog)_
 
-### Fase 3 — Experiência do Desenvolvedor (2-3 meses) — `0 de 6 (não iniciada)`
+### Fase 3 — Experiência do Desenvolvedor (2-3 meses) — `6 ✅ de 6`
 
 **Objetivo:** Reduzir o tempo de integração de semanas para horas.
 
-- [ ] SDK em Python (maior mercado de ciência de dados e compliance scripts)
-- [ ] CLI para verificação offline: dado um arquivo CSV de registros, verifica se o Merkle Root bate com o da blockchain
-- [ ] Dashboard web mínimo: listar batches, ver status de sincronização, verificar integridade
-- [ ] Helm chart para deploy no Kubernetes (API + MongoDB + Fabric peer como sidecar)
-- [ ] Documentação com guias por vertical: "Como usar para auditoria LGPD", "Como usar para supply chain"
-- [ ] Sandbox público com rede Fabric de teste para desenvolvedores avaliarem
+- [x] **SDK em Python** — pacote `anchor` (`sdk/python`, só stdlib): `Client` (urllib, retries, create/get/list/batch/verify) + verificação local trustless (`compute_hash`/`merkle_root`/`verify_records_locally`) com JSON canônico **byte-a-byte igual ao Go**. 24 testes unitários + integração ao vivo (server hash == local). _(ver changelog)_
+- [x] **CLI para verificação offline** — comando `anchor` (no pacote Python): recalcula o Merkle root de um CSV e compara com o root ancorado (offline com `--expected-root`, ou buscando via API por `--batch-id`); exit 0 VALID / 2 CORRUPTED. _(ver changelog)_
+- [x] **Dashboard web mínimo** — `dashboard/index.html` (vanilla JS, sem build): health, status de sync, lista de batches com verify de integridade e verify de batch de records. Validado ao vivo. _(ver changelog)_
+- [x] **Helm chart** — `deploy/helm/anchor` (API + MongoDB + Redis); Fabric externo, identidade via Secret (API non-root, chave isolada). `helm lint`/`template` limpos. _(ver changelog)_ _Nota:_ peer Fabric não vai como sidecar — a rede é externa e o gateway disca nela (decisão de arquitetura).
+- [x] **Guias por vertical** — `docs/guides/compliance-audit.md` (LGPD/GDPR/SOX/HIPAA) e `docs/guides/supply-chain.md`, em inglês, com exemplos de SDK/CLI. _(ver changelog)_
+- [x] **Sandbox para avaliação** — `docs/guides/sandbox-quickstart.md` + alvo `make smoke` (e2e black-box) sobre a rede dev local (`make up`). _(ver changelog)_
 
 ### Fase 4 — Observabilidade e SLAs (1-2 meses) — `2 de 6`
 
@@ -166,6 +166,34 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-06 — Fase 3: Experiência do Desenvolvedor (6/6)
+
+Empacota o produto para integração rápida (foco do vertical de Compliance). Tudo em
+**inglês** (alcance/comercialização). Concluída.
+
+- **SDK Python** (`sdk/python`, pacote `anchor`, **só stdlib**): `Client` (urllib, retries
+  network/5xx, 409-como-resultado no verify, checagem trustless de hash no create) +
+  verificação local (`compute_hash`/`merkle_root`/`verify_records_locally`). O JSON canônico
+  replica o `encoding/json` do Go **byte-a-byte** (chaves ordenadas, compacto, escapes
+  HTML), provado pela integração ao vivo (server hash == local). 24 testes unit + 1 live.
+  `pyproject.toml` (entry point `anchor`); packaging validado (`pip install` + console script).
+- **CLI de auditoria offline** (`anchor`, no pacote): `merkle`/`verify`/`hash`. `verify`
+  recalcula o root de um CSV e compara com o ancorado (offline `--expected-root` ou via API
+  por `--batch-id`); exit 0 VALID / 2 CORRUPTED. Demo ao vivo: VALID + tamper→CORRUPTED.
+- **Dashboard web** (`dashboard/index.html`, vanilla JS, sem build): health, sync status,
+  batches com verify de integridade. Validado ao vivo (50 batches, verify VALID pela UI).
+- **Helm chart** (`deploy/helm/anchor`): API (non-root, identidade via Secret com a chave
+  isolada — alinhado à Fase G) + MongoDB (PVC) + Redis; Fabric externo via gateway;
+  config.yaml renderizado de values (auth/tenants, tenant_channels, métricas). `helm lint`/
+  `template` limpos; config embutido validado.
+- **Guias por vertical** (inglês): `docs/guides/compliance-audit.md` (LGPD/GDPR/SOX/HIPAA),
+  `docs/guides/supply-chain.md`, `docs/guides/sandbox-quickstart.md`. Alvo `make smoke` (e2e
+  black-box) para avaliação rápida sobre a rede dev.
+- **Bug de teste corrigido:** o `e2e-test.sh` checava métricas com `curl | grep -q` sob
+  `set -o pipefail` — `grep -q` fecha o pipe e o `curl` morre com SIGPIPE (141), marcando o
+  check como falho mesmo com match. Trocado por captura + match de substring (`[[ == ]]`).
+  A feature de métricas estava correta; era o teste. Dev e2e **43/43**, prod **48/48**.
 
 ### 2026-06-06 — QA ponta a ponta do produto + 2 bugs corrigidos
 
