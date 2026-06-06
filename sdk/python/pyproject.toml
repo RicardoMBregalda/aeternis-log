@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anchor-sdk"
+version = "0.1.0"
+description = "Python client and offline verifier for the Tamper-Evident Data Anchoring API"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Ricardo M. Bregalda" }]
+keywords = [
+    "blockchain",
+    "hyperledger-fabric",
+    "audit",
+    "compliance",
+    "merkle-tree",
+    "tamper-evident",
+    "integrity",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []  # standard library only
+
+[project.scripts]
+anchor = "anchor.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/RicardoMBregalda/tcc-log-management"
+Source = "https://github.com/RicardoMBregalda/tcc-log-management/tree/main/sdk/python"
+
+[tool.setuptools]
+packages = ["anchor"]
