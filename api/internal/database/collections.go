@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// ErrDuplicateRecord is returned by InsertRecord when a record with the same
+// (tenant, domain, id) already exists — including a soft-deleted one, since IDs in
+// an audit trail are immutable and must not be resurrected. Callers map it to 409.
+var ErrDuplicateRecord = errors.New("record already exists")
 
 // NewFindOptions creates a new FindOptions instance
 func NewFindOptions() *options.FindOptions {
@@ -190,6 +196,9 @@ func (c *Collections) AggregateBatches(ctx context.Context) ([]*models.BatchInfo
 // InsertRecord inserts a new generic record.
 func (c *Collections) InsertRecord(ctx context.Context, record *models.Record) error {
 	if _, err := c.Records.InsertOne(ctx, record); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return ErrDuplicateRecord
+		}
 		return fmt.Errorf("failed to insert record: %w", err)
 	}
 	return nil

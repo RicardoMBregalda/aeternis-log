@@ -436,6 +436,61 @@ func TestRecordsCRUD(t *testing.T) {
 	}
 }
 
+// TestInsertRecordDuplicate verifies a duplicate (tenant, domain, id) — including a
+// re-used id — surfaces ErrDuplicateRecord (mapped to 409 by the handler), not a
+// generic error, while the same id under another tenant is allowed.
+func TestInsertRecordDuplicate(t *testing.T) {
+	cfg := &config.MongoDBConfig{
+		URL:                      "mongodb://localhost:27017",
+		Database:                 "logdb_test",
+		Collection:               "logs_test",
+		RecordsCollection:        "records_dup_test",
+		SyncControlCollection:    "sync_control_test",
+		MinPoolSize:              5,
+		MaxPoolSize:              10,
+		MaxIdleTimeMS:            60000,
+		ServerSelectionTimeoutMS: 5000,
+		ConnectTimeout:           10 * time.Second,
+		SocketTimeout:            30 * time.Second,
+	}
+	client, err := NewMongoClient(cfg)
+	if err != nil {
+		t.Skipf("MongoDB not available: %v", err)
+		return
+	}
+	defer client.Close(context.Background())
+	ctx := context.Background()
+	client.Database.Collection(cfg.RecordsCollection).Drop(ctx)
+	if err := client.CreateIndexes(ctx); err != nil {
+		t.Fatalf("create indexes: %v", err)
+	}
+
+	collections := NewCollections(client)
+	rec := &models.Record{
+		Tenant:    "acme",
+		Domain:    "contracts",
+		ID:        "dup-1",
+		Timestamp: time.Now().Format(time.RFC3339),
+		Source:    "crm",
+		Payload:   map[string]interface{}{"x": 1},
+		CreatedAt: models.FlexTime{Time: time.Now()},
+	}
+	rec.Hash = rec.CalculateHash()
+	if err := collections.InsertRecord(ctx, rec); err != nil {
+		t.Fatalf("first insert: %v", err)
+	}
+	// Same (tenant, domain, id) -> duplicate.
+	if err := collections.InsertRecord(ctx, rec); !errors.Is(err, ErrDuplicateRecord) {
+		t.Errorf("duplicate insert: expected ErrDuplicateRecord, got %v", err)
+	}
+	// Same id under a different tenant is allowed.
+	other := *rec
+	other.Tenant = "globex"
+	if err := collections.InsertRecord(ctx, &other); err != nil {
+		t.Errorf("same id under another tenant should be allowed, got %v", err)
+	}
+}
+
 // TestConnectWithRetry tests retry mechanism
 func TestConnectWithRetry(t *testing.T) {
 	cfg := &config.MongoDBConfig{

@@ -8,6 +8,7 @@ import (
 
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/database"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/fabric"
+	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/metrics"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/webhook"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
@@ -281,6 +282,7 @@ func (bp *BatchProcessor) processBatch(ctx context.Context, batchSize int) error
 		}
 
 		bp.notifyAnchored("default", "logs", batchID, merkleRoot, len(logs), inv.TxID)
+		metrics.RecordAnchoredBatch("default", "logs", len(logs))
 	}
 
 	// Update statistics
@@ -417,6 +419,7 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, tenant, domain
 		result.Anchored = true
 		result.Channel = channel
 		bp.notifyAnchored(tenant, domain, batchID, merkleRoot, len(records), inv.TxID)
+		metrics.RecordAnchoredBatch(tenant, domain, len(records))
 	}
 
 	bp.updateStats(batchID, len(records), startTime)

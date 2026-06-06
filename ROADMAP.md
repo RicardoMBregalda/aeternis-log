@@ -10,7 +10,7 @@
 | Fase 1 — Estabilização Técnica | 8 ✅ de 8 | `▓▓▓▓▓▓▓▓` |
 | Fase 2 — Generalização do Domínio | 7 ✅ de 7 | `▓▓▓▓▓▓▓` |
 | Fase 3 — Experiência do Desenvolvedor | 0 de 6 | `░░░░░░` |
-| Fase 4 — Observabilidade e SLAs | 0 de 6 | `░░░░░░` |
+| Fase 4 — Observabilidade e SLAs | 2 de 6 | `▓▓░░░░` |
 
 ### ✅ Concluído (verificado)
 - **Logging estruturado (`zerolog`)** _(Fase 1)_ — pacote `internal/logger` (`internal/logger/logger.go`); todos os `fmt.Printf("DEBUG ...")` removidos do código de produção; `middleware.RequestLogger` registrado em `cmd/api/main.go`. _(ver Changelog)_
@@ -125,16 +125,16 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [ ] Documentação com guias por vertical: "Como usar para auditoria LGPD", "Como usar para supply chain"
 - [ ] Sandbox público com rede Fabric de teste para desenvolvedores avaliarem
 
-### Fase 4 — Observabilidade e SLAs (1-2 meses) — `0 de 6 (não iniciada)`
+### Fase 4 — Observabilidade e SLAs (1-2 meses) — `2 de 6`
 
 **Objetivo:** Suportar clientes em produção com garantias concretas.
 
-- [ ] Métricas Prometheus já existem (`/api/v1/metrics`) — criar dashboards Grafana padronizados
+- [x] **Métricas Prometheus** — implementadas no QA de 2026-06-06 (estavam só configuradas, sem código): servidor de métricas na porta dedicada (`metrics.port`, path `/metrics`) com `http_requests_total`/`http_request_duration_seconds`, coletores Go/process e contadores de produto (`batches_anchored_total`/`records_anchored_total`). _Falta:_ dashboards Grafana padronizados.
 - [ ] Alertas: batch pendente há mais de X minutos, discrepância de Merkle Root detectada, WAL acima de threshold
 - [ ] API de verificação pública: endpoint sem autenticação que recebe um hash e retorna se ele está ancorado na blockchain (para auditores externos)
 - [ ] Relatório de auditoria em PDF: dado um período, gera documento com todos os batches, raízes e TxIDs do Fabric
 - [ ] SLA de latência P99 < 500ms para escrita com WAL habilitado
-- [ ] Runbook de recuperação de desastres documentado
+- [x] Runbook de recuperação de desastres documentado — [docs/runbook-operacao-prod.md](docs/runbook-operacao-prod.md) (backup/restore/DR da rede Fabric; Fase G do plano de produção)
 
 ---
 
@@ -166,6 +166,37 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-06 — QA ponta a ponta do produto + 2 bugs corrigidos
+
+Bateria completa de testes do produto (suíte Go + integração contra a rede viva +
+black-box da API) antes de avançar para a Fase 3. Resultado: **tudo passando**, com 2 bugs
+encontrados e corrigidos.
+
+- **Cobertura automatizada:** `go test ./...` (API + SDK) verde; integração ao vivo
+  `TestGatewayE2E` (Fabric dev, tx real) e `TestSDKLive` (SDK contra a API, hash local ==
+  servidor, batch ancorado, verify VALID).
+- **Black-box E2E** (novo `api/scripts/e2e-test.sh`, dependency-free, com asserts):
+  health, root, **métricas**, auth (401 sem key / com key errada), records CRUD + hash, soft-delete,
+  **id duplicado**, paginação por cursor (sem overlap), batch/anchor (tx real, canal
+  correto), verify VALID, **tamper → CORRUPTED**, **isolamento multi-tenant** (404 cross-
+  tenant), domínio `logs` + Merkle, stats e WAL. **Prod (auth+2 tenants+canal-por-tenant):
+  48/48** (estável em 3 execuções); **dev (sem auth): 43/43**.
+- **Bug 1 — métricas Prometheus inexistentes:** `metrics` estava configurado e a porta
+  exposta, mas **não havia implementação** (nem dependência). _Fix:_ pacote
+  `internal/metrics` (client_golang) — servidor na porta dedicada (`metrics.path`),
+  middleware Gin (`http_requests_total`/`http_request_duration_seconds`), coletores Go/
+  process e contadores de produto (`batches_anchored_total`/`records_anchored_total`),
+  ligado no `main.go` (com shutdown gracioso) e no `batch_processor`. Testes unitários
+  novos. _(reflete na Fase 4)_
+- **Bug 2 — id de record duplicado retornava HTTP 500:** criar um record com um `id` já
+  existente (inclusive soft-deleted) caía no índice único `(tenant,domain,id)` e o handler
+  devolvia `500 database_error`. _Fix:_ `database.ErrDuplicateRecord` (detecta
+  `IsDuplicateKeyError` no `InsertRecord`) → handler responde **409 Conflict** com mensagem
+  clara; preserva a imutabilidade de id do trilho de auditoria. Teste unitário novo
+  (`TestInsertRecordDuplicate`) + asserts no e2e.
+- Ambos os deploys (dev :5001 e prod-staging :5002) reconstruídos com as correções; `build/
+  vet/test` limpos.
 
 ### 2026-06-06 — Fase G (plano de produção): hardening (segredos, recursos, backup/DR)
 
