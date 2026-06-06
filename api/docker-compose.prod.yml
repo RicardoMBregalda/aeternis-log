@@ -23,29 +23,14 @@ services:
       - "5002:5001"   # API port (dev uses 5001)
       - "9091:9090"   # Metrics port (dev uses 9090)
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      # Self-contained prod config: auth (per-tenant keys) + fabric (gateway, Org1
+      # identity, tenant_channels). See api/config.prod.yaml.
+      - ./config.prod.yaml:/app/config.yaml:ro
       - wal-data-prod:/var/log/tcc-wal
       # PROD crypto: the whole organizations/ tree issued by the prod Fabric CAs.
       - ../hybrid-architecture/fabric-network/prod/organizations:/fabric-crypto:ro
     environment:
-      - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=5001
-      - MONGO_URL=mongodb://mongodb-prod:27017
-      - REDIS_HOST=redis-prod
-      - REDIS_PORT=6379
-      - WAL_DIRECTORY=/var/log/tcc-wal
       - LOG_LEVEL=info
-      # Fabric: gateway transport against the prod network, Org1 identity from the CA.
-      - FABRIC_TRANSPORT=gateway
-      - FABRIC_CHANNEL=logchannel
-      - FABRIC_CHAINCODE=logchaincode
-      - FABRIC_MSP_ID=Org1MSP
-      - FABRIC_GATEWAY_PEER_ENDPOINT=peer0.org1.example.com:7051
-      - FABRIC_GATEWAY_SERVER_NAME_OVERRIDE=peer0.org1.example.com
-      - FABRIC_GATEWAY_PEER_TLS_CA_FILE=/fabric-crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
-      # CA-issued MSP names the signcert cert.pem (not the cryptogen Admin@...-cert.pem).
-      - FABRIC_IDENTITY_CERT_FILE=/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/signcerts/cert.pem
-      - FABRIC_IDENTITY_KEY_DIR=/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore
     depends_on:
       - mongodb-prod
       - redis-prod

@@ -50,7 +50,7 @@ func TestGatewayE2E(t *testing.T) {
 	merkleRoot := fmt.Sprintf("root-%d", time.Now().Unix())
 
 	// Submit StoreMerkleRoot(batchID, merkleRoot, timestamp, numLogs, logIDs).
-	inv, err := backend.Invoke(ctx, "StoreMerkleRoot", []string{
+	inv, err := backend.Invoke(ctx, cfg.Channel, "StoreMerkleRoot", []string{
 		batchID,
 		merkleRoot,
 		time.Now().UTC().Format(time.RFC3339),
@@ -66,7 +66,7 @@ func TestGatewayE2E(t *testing.T) {
 	t.Logf("submitted batch %s, txID=%s", batchID, inv.TxID)
 
 	// Evaluate QueryMerkleBatch(batchID) and check the round-trip.
-	q, err := backend.Query(ctx, "QueryMerkleBatch", []string{batchID})
+	q, err := backend.Query(ctx, cfg.Channel, "QueryMerkleBatch", []string{batchID})
 	if err != nil {
 		t.Fatalf("Query QueryMerkleBatch failed: %v", err)
 	}

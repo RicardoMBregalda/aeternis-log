@@ -147,6 +147,22 @@ type FabricConfig struct {
 	GatewayServerNameOverride string `yaml:"gateway_server_name_override"`
 	IdentityCertFile          string `yaml:"identity_cert_file"`
 	IdentityKeyDir            string `yaml:"identity_key_dir"`
+
+	// TenantChannels maps a tenant id to its own Fabric channel, raising
+	// multi-tenant isolation from a "tenant" field on the shared channel to a
+	// dedicated ledger per tenant. A tenant without a mapping anchors to Channel
+	// (the default). Requires the channel to already exist with the chaincode
+	// committed (see prod/scripts/create-tenant-channel.sh).
+	TenantChannels map[string]string `yaml:"tenant_channels"`
+}
+
+// ChannelForTenant returns the Fabric channel a tenant anchors to: its dedicated
+// channel when mapped, otherwise the default Channel.
+func (fc *FabricConfig) ChannelForTenant(tenant string) string {
+	if ch, ok := fc.TenantChannels[tenant]; ok && ch != "" {
+		return ch
+	}
+	return fc.Channel
 }
 
 // WALConfig holds Write-Ahead Log configuration
@@ -449,6 +465,24 @@ func overrideFromEnv(config *Config) {
 	}
 	if val := os.Getenv("FABRIC_IDENTITY_KEY_DIR"); val != "" {
 		config.Fabric.IdentityKeyDir = val
+	}
+	// FABRIC_TENANT_CHANNELS: comma-separated "tenant:channel" pairs, e.g.
+	// "acme:acme-channel,globex:globex-channel".
+	if val := os.Getenv("FABRIC_TENANT_CHANNELS"); val != "" {
+		m := make(map[string]string)
+		for _, pair := range splitAndTrim(val, ",") {
+			kv := strings.SplitN(pair, ":", 2)
+			if len(kv) == 2 {
+				t := strings.TrimSpace(kv[0])
+				ch := strings.TrimSpace(kv[1])
+				if t != "" && ch != "" {
+					m[t] = ch
+				}
+			}
+		}
+		if len(m) > 0 {
+			config.Fabric.TenantChannels = m
+		}
 	}
 
 	// WAL

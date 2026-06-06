@@ -25,11 +25,11 @@ func newDockerExecBackend(cfg *config.FabricConfig) *dockerExecBackend {
 }
 
 // Invoke runs a chaincode invoke and extracts the transaction ID from the CLI output.
-func (b *dockerExecBackend) Invoke(ctx context.Context, function string, args []string) (*InvokeResponse, error) {
+func (b *dockerExecBackend) Invoke(ctx context.Context, channel, function string, args []string) (*InvokeResponse, error) {
 	cmdCtx, cancel := context.WithTimeout(ctx, b.cfg.InvokeTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(cmdCtx, "docker", b.invokeArgs(function, args)...)
+	cmd := exec.CommandContext(cmdCtx, "docker", b.invokeArgs(channel, function, args)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -46,11 +46,11 @@ func (b *dockerExecBackend) Invoke(ctx context.Context, function string, args []
 }
 
 // Query runs a chaincode query and decodes the JSON result.
-func (b *dockerExecBackend) Query(ctx context.Context, function string, args []string) (*QueryResponse, error) {
+func (b *dockerExecBackend) Query(ctx context.Context, channel, function string, args []string) (*QueryResponse, error) {
 	cmdCtx, cancel := context.WithTimeout(ctx, b.cfg.QueryTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(cmdCtx, "docker", b.queryArgs(function, args)...)
+	cmd := exec.CommandContext(cmdCtx, "docker", b.queryArgs(channel, function, args)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -93,13 +93,13 @@ func (b *dockerExecBackend) Close() error { return nil }
 
 // invokeArgs builds the `docker exec ... peer chaincode invoke` argument list
 // from configuration, so peer/orderer/cert locations are not hardcoded.
-func (b *dockerExecBackend) invokeArgs(function string, args []string) []string {
+func (b *dockerExecBackend) invokeArgs(channel, function string, args []string) []string {
 	cmdArgs := []string{
 		"exec",
 		b.cfg.PeerContainer,
 		"peer", "chaincode", "invoke",
 		"-o", b.cfg.OrdererAddress,
-		"-C", b.cfg.Channel,
+		"-C", channel,
 		"-n", b.cfg.Chaincode,
 	}
 	if b.cfg.TLSEnabled {
@@ -109,12 +109,12 @@ func (b *dockerExecBackend) invokeArgs(function string, args []string) []string 
 }
 
 // queryArgs builds the `docker exec ... peer chaincode query` argument list.
-func (b *dockerExecBackend) queryArgs(function string, args []string) []string {
+func (b *dockerExecBackend) queryArgs(channel, function string, args []string) []string {
 	return []string{
 		"exec",
 		b.cfg.PeerContainer,
 		"peer", "chaincode", "query",
-		"-C", b.cfg.Channel,
+		"-C", channel,
 		"-n", b.cfg.Chaincode,
 		"-c", b.buildChaincodeArgs(function, args),
 	}

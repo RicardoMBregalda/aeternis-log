@@ -117,4 +117,7 @@ type RecordBatchResult struct {
 	NumRecords int    `json:"num_records"`
 	TxID       string `json:"tx_id,omitempty"`
 	Anchored   bool   `json:"anchored"`
+	// Channel is the Fabric channel the batch was anchored to (the tenant's
+	// dedicated channel when mapped, else the default).
+	Channel string `json:"channel,omitempty"`
 }

@@ -268,7 +268,8 @@ func (bp *BatchProcessor) processBatch(ctx context.Context, batchSize int) error
 		fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
-		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, batchID, merkleRoot, len(logs), logIDs)
+		channel := bp.fabricClient.Config.ChannelForTenant("default")
+		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, channel, batchID, merkleRoot, len(logs), logIDs)
 		if err != nil {
 			bp.incrementFailedBatch()
 			return fmt.Errorf("failed to store batch in Fabric: %w", err)
@@ -406,13 +407,15 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, tenant, domain
 		fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
-		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, batchID, merkleRoot, len(records), recordIDs)
+		channel := bp.fabricClient.Config.ChannelForTenant(tenant)
+		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, channel, batchID, merkleRoot, len(records), recordIDs)
 		if err != nil {
 			bp.incrementFailedBatch()
 			return nil, fmt.Errorf("failed to anchor record batch in Fabric: %w", err)
 		}
 		result.TxID = inv.TxID
 		result.Anchored = true
+		result.Channel = channel
 		bp.notifyAnchored(tenant, domain, batchID, merkleRoot, len(records), inv.TxID)
 	}
 
