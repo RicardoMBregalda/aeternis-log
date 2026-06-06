@@ -15,6 +15,7 @@ import (
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/handlers"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/logger"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/merkle"
+	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/metrics"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/middleware"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
 	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/wal"
@@ -175,6 +176,9 @@ func main() {
 	router.Use(middleware.RequestLogger())
 	router.Use(middleware.CORS())
 	router.Use(middleware.SecurityHeaders())
+	if cfg.Metrics.Enabled {
+		router.Use(metrics.Middleware())
+	}
 	if cfg.RateLimit.Enabled {
 		router.Use(middleware.RateLimiter(cfg.RateLimit.MaxRequests, cfg.RateLimit.Window))
 		lg.Info().
@@ -224,6 +228,26 @@ func main() {
 		}
 	}()
 
+	// Metrics server (separate port) -------------------------------------
+	var metricsSrv *http.Server
+	if cfg.Metrics.Enabled {
+		mux := http.NewServeMux()
+		mux.Handle(cfg.Metrics.Path, metrics.Handler())
+		metricsSrv = &http.Server{
+			Addr:    fmt.Sprintf(":%d", cfg.Metrics.Port),
+			Handler: mux,
+		}
+		go func() {
+			lg.Info().
+				Int("port", cfg.Metrics.Port).
+				Str("path", cfg.Metrics.Path).
+				Msg("metrics server starting")
+			if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				lg.Error().Err(err).Msg("metrics server error")
+			}
+		}()
+	}
+
 	// Graceful shutdown --------------------------------------------------
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -236,6 +260,11 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		lg.Error().Err(err).Msg("server forced to shutdown")
+	}
+	if metricsSrv != nil {
+		if err := metricsSrv.Shutdown(ctx); err != nil {
+			lg.Error().Err(err).Msg("metrics server forced to shutdown")
+		}
 	}
 	lg.Info().Msg("server exited gracefully")
 }

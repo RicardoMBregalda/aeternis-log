@@ -98,6 +98,14 @@ func (h *RecordHandler) CreateRecord(c *gin.Context) {
 	defer cancel()
 
 	if err := h.collections.InsertRecord(ctx, record); err != nil {
+		if errors.Is(err, database.ErrDuplicateRecord) {
+			c.JSON(http.StatusConflict, models.ErrorResponse{
+				Error:   "conflict",
+				Message: fmt.Sprintf("Record already exists: %s/%s", domain, record.ID),
+				Code:    http.StatusConflict,
+			})
+			return
+		}
 		log.Error().Err(err).Str("domain", domain).Str("record_id", record.ID).Msg("failed to insert record")
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "database_error",
