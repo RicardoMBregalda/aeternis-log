@@ -1,0 +1,108 @@
+# Default values for the anchor chart.
+
+replicaCount: 1
+
+image:
+  repository: tcc-go-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+api:
+  port: 5001
+  metricsPort: 9090
+  logLevel: info
+  # The container image runs as uid 1000 (non-root); the Fabric identity Secret is
+  # mounted read-only and owned by this uid (see fabric.identity).
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+  resources:
+    limits:
+      cpu: "1"
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 128Mi
+  service:
+    type: ClusterIP
+
+# Per-client-IP rate limiting (in-memory, per pod).
+rateLimit:
+  enabled: false
+  maxRequests: 100
+  window: 1m
+
+# API-key auth. Tenants resolve from their key; flat apiKeys -> tenant "default".
+auth:
+  enabled: false
+  headerName: X-API-Key
+  apiKeys: []
+  tenants: []
+  #  - id: acme
+  #    keys: ["acme-key"]
+
+fabric:
+  syncEnabled: true
+  transport: gateway
+  channel: logchannel
+  chaincode: logchaincode
+  mspId: Org1MSP
+  # The Fabric network is external to the cluster; the gateway dials this peer.
+  peerEndpoint: peer0.org1.example.com:7051
+  serverNameOverride: peer0.org1.example.com
+  invokeTimeout: 30s
+  queryTimeout: 10s
+  # Per-tenant channels (ledger-level isolation): tenant -> channel.
+  tenantChannels: {}
+  #  acme: acme-channel
+  # Signing identity + peer TLS CA. Provided via a Kubernetes Secret mounted at
+  # /fabric-identity (key file mode 0400). Either reference an existing secret or
+  # supply the PEMs here so the chart creates one.
+  identity:
+    existingSecret: ""   # name of a pre-created secret (keys: tls-ca.pem, sign-cert.pem, sign-key.pem)
+    tlsCaCert: ""        # PEM of the peer's TLS CA
+    signCert: ""         # PEM of the client signing certificate (Org admin/user)
+    signKey: ""          # PEM of the client signing key (SENSITIVE)
+
+# Webhook fired when a batch is anchored (optional).
+webhook:
+  enabled: false
+  url: ""
+  secret: ""
+
+# WAL (write-ahead log) durability. "file" uses a per-pod emptyDir; for multiple
+# replicas with shared recovery use "redis".
+wal:
+  backend: file
+
+mongodb:
+  enabled: true
+  image: mongo:7.0
+  storage: 8Gi
+  resources:
+    limits: { cpu: "1", memory: 1Gi }
+    requests: { cpu: 250m, memory: 256Mi }
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  resources:
+    limits: { cpu: "500m", memory: 512Mi }
+    requests: { cpu: 100m, memory: 64Mi }
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: anchor.example.com
+  tls: []
+
+# Prometheus scrape annotations on the API pod.
+metrics:
+  enabled: true
+  podAnnotations: true

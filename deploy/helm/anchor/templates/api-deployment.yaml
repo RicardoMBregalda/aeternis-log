@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "anchor.fullname" . }}
+  labels:
+    {{- include "anchor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "anchor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "anchor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if and .Values.metrics.enabled .Values.metrics.podAnnotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.api.metricsPort | quote }}
+        prometheus.io/path: "/metrics"
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: {{ .Values.api.securityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.api.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.api.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.api.securityContext.runAsGroup }}
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.port }}
+            - name: metrics
+              containerPort: {{ .Values.api.metricsPort }}
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: fabric-identity
+              mountPath: /fabric-identity
+              readOnly: true
+            - name: wal
+              mountPath: /var/log/tcc-wal
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "anchor.fullname" . }}-config
+        - name: fabric-identity
+          secret:
+            secretName: {{ include "anchor.identitySecret" . }}
+            defaultMode: 0440
+            items:
+              - key: tls-ca.pem
+                path: tls/ca.crt
+              - key: sign-cert.pem
+                path: signcert/cert.pem
+              - key: sign-key.pem
+                path: keystore/key.pem
+        - name: wal
+          emptyDir: {}
