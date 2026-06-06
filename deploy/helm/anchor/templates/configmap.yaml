@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "anchor.fullname" . }}-config
+  labels:
+    {{- include "anchor.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: {{ .Values.api.port }}
+      read_timeout: 30s
+      write_timeout: 30s
+      shutdown_timeout: 10s
+    mongodb:
+      url: "mongodb://{{ include "anchor.mongoHost" . }}:27017"
+      database: "logdb"
+      collection: "logs"
+      records_collection: "records"
+      sync_control_collection: "sync_control"
+      min_pool_size: 10
+      max_pool_size: 100
+      max_idle_time_ms: 300000
+      server_selection_timeout_ms: 5000
+      connect_timeout: 10s
+      socket_timeout: 30s
+    redis:
+      host: "{{ include "anchor.redisHost" . }}"
+      port: 6379
+      db: 0
+      pool_size: 50
+      cache_ttl: 600
+      cache_enabled: true
+    fabric:
+      channel: "{{ .Values.fabric.channel }}"
+      chaincode: "{{ .Values.fabric.chaincode }}"
+      sync_enabled: {{ .Values.fabric.syncEnabled }}
+      transport: "{{ .Values.fabric.transport }}"
+      tls_enabled: true
+      invoke_timeout: {{ .Values.fabric.invokeTimeout }}
+      query_timeout: {{ .Values.fabric.queryTimeout }}
+      msp_id: "{{ .Values.fabric.mspId }}"
+      gateway_peer_endpoint: "{{ .Values.fabric.peerEndpoint }}"
+      gateway_server_name_override: "{{ .Values.fabric.serverNameOverride }}"
+      gateway_peer_tls_ca_file: "/fabric-identity/tls/ca.crt"
+      identity_cert_file: "/fabric-identity/signcert/cert.pem"
+      identity_key_dir: "/fabric-identity/keystore"
+      {{- if .Values.fabric.tenantChannels }}
+      tenant_channels:
+        {{- toYaml .Values.fabric.tenantChannels | nindent 8 }}
+      {{- end }}
+    wal:
+      enabled: true
+      backend: "{{ .Values.wal.backend }}"
+      directory: "/var/log/tcc-wal"
+      check_interval: 5s
+      max_file_size_mb: 100
+      rotation_enabled: true
+      retention_days: 7
+      stream_key: "wal:pending:logs"
+      consumer_group: "wal-processors"
+      read_count: 128
+      block_timeout: 2s
+      claim_min_idle: 30s
+    batching:
+      enabled: true
+      auto_batch_size: 100
+      auto_batch_interval: 30s
+      batch_executor_workers: 5
+      verification_enabled: true
+    logging:
+      level: "{{ .Values.api.logLevel }}"
+      format: "json"
+      output: "stdout"
+      enable_caller: true
+    metrics:
+      enabled: {{ .Values.metrics.enabled }}
+      port: {{ .Values.api.metricsPort }}
+      path: "/metrics"
+    auth:
+      enabled: {{ .Values.auth.enabled }}
+      header_name: "{{ .Values.auth.headerName }}"
+      api_keys:
+        {{- toYaml .Values.auth.apiKeys | nindent 8 }}
+      tenants:
+        {{- toYaml .Values.auth.tenants | nindent 8 }}
+    rate_limit:
+      enabled: {{ .Values.rateLimit.enabled }}
+      max_requests: {{ .Values.rateLimit.maxRequests }}
+      window: {{ .Values.rateLimit.window }}
+    webhook:
+      enabled: {{ .Values.webhook.enabled }}
+      url: "{{ .Values.webhook.url }}"
+      secret: "{{ .Values.webhook.secret }}"
+      timeout: 5s
+      max_retries: 3
