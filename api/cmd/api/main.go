@@ -207,8 +207,9 @@ func main() {
 	merkleHandler := handlers.NewMerkleHandler(batchProcessor, redisCache)
 	walHandler := handlers.NewWALHandler(walInstance)
 	statsHandler := handlers.NewStatsHandler(collections, mongoClient, redisCache, fabricClient, batchProcessor, walInstance)
+	publicHandler := handlers.NewPublicHandler(fabricClient, cfg.Fabric.Channel)
 
-	registerRoutes(router, authMW, healthHandler, logHandler, recordHandler, merkleHandler, walHandler, statsHandler)
+	registerRoutes(router, authMW, healthHandler, logHandler, recordHandler, merkleHandler, walHandler, statsHandler, publicHandler)
 
 	srv := &http.Server{
 		Addr:         cfg.GetServerAddr(),
@@ -280,6 +281,7 @@ func registerRoutes(
 	merkleHandler *handlers.MerkleHandler,
 	walHandler *handlers.WALHandler,
 	statsHandler *handlers.StatsHandler,
+	publicHandler *handlers.PublicHandler,
 ) {
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -290,6 +292,9 @@ func registerRoutes(
 	})
 
 	router.GET("/health", healthHandler.HealthCheck)
+
+	// Public, unauthenticated verification for external auditors.
+	router.GET("/public/anchors/:batchId", publicHandler.GetAnchor)
 
 	v1 := router.Group("/api/v1")
 	{
