@@ -50,6 +50,14 @@ var (
 		},
 		[]string{"tenant", "domain"},
 	)
+
+	integrityVerifications = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "integrity_verifications_total",
+			Help: "Batch integrity verifications by domain and result (VALID or CORRUPTED).",
+		},
+		[]string{"domain", "result"},
+	)
 )
 
 func init() {
@@ -58,6 +66,7 @@ func init() {
 		httpDuration,
 		batchesAnchored,
 		recordsAnchored,
+		integrityVerifications,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -90,4 +99,14 @@ func RecordAnchoredBatch(tenant, domain string, numRecords int) {
 	}
 	batchesAnchored.WithLabelValues(tenant, domain).Inc()
 	recordsAnchored.WithLabelValues(tenant, domain).Add(float64(numRecords))
+}
+
+// RecordVerification records the outcome of a batch integrity check. A rising
+// CORRUPTED count means a Merkle-root discrepancy was detected — alert on it.
+func RecordVerification(domain string, valid bool) {
+	result := "CORRUPTED"
+	if valid {
+		result = "VALID"
+	}
+	integrityVerifications.WithLabelValues(domain, result).Inc()
 }

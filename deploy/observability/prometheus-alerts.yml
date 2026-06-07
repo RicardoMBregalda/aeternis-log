@@ -1,0 +1,64 @@
+# Prometheus alerting rules for the Anchor API.
+# Load via prometheus.yml: rule_files: ["prometheus-alerts.yml"].
+# Assumes the API is scraped with job="anchor-api" (see README.md).
+groups:
+  - name: anchor-api
+    rules:
+      - alert: AnchorApiDown
+        expr: up{job="anchor-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Anchor API is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for 2 minutes."
+
+      - alert: IntegrityViolationDetected
+        # A CORRUPTED batch means a recomputed Merkle root did not match the anchored
+        # one — tampering or corruption. This is the core guarantee; page on it.
+        expr: increase(integrity_verifications_total{result="CORRUPTED"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Merkle root discrepancy detected (domain {{ $labels.domain }})"
+          description: "A batch integrity verification returned CORRUPTED in the last 5m."
+
+      - alert: AnchoringStalled
+        # Records are being written but nothing has been anchored for 15m — the batch
+        # processor or Fabric may be stuck (a proxy for 'batch pending too long').
+        expr: |
+          (sum(increase(records_anchored_total[15m])) == 0)
+          and
+          (sum(increase(http_requests_total{method="POST", route="/api/v1/:domain/records"}[15m])) > 0)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Records are not being anchored"
+          description: "Records were created in the last 15m but no batch was anchored."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API 5xx error rate"
+          description: "More than 5% of requests are failing (5xx) over 10m."
+
+      - alert: HighWriteLatencyP99
+        # SLA: P99 write latency (record create) should stay under 500ms.
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(http_request_duration_seconds_bucket{route="/api/v1/:domain/records", method="POST"}[5m]))
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Record-write P99 latency above the 500ms SLA"
+          description: "P99 latency for POST records has exceeded 500ms for 10m."

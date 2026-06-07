@@ -36,6 +36,18 @@ func TestHandlerExposesProductCounters(t *testing.T) {
 	}
 }
 
+func TestRecordVerification(t *testing.T) {
+	RecordVerification("audit", true)
+	RecordVerification("audit", false)
+	body := scrape(t)
+	if !strings.Contains(body, `integrity_verifications_total{domain="audit",result="VALID"} 1`) {
+		t.Errorf("expected one VALID verification, body:\n%s", body)
+	}
+	if !strings.Contains(body, `integrity_verifications_total{domain="audit",result="CORRUPTED"} 1`) {
+		t.Errorf("expected one CORRUPTED verification, body:\n%s", body)
+	}
+}
+
 func TestMiddlewareRecordsRequests(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
