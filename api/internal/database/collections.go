@@ -302,6 +302,60 @@ func (c *Collections) UpdateRecordBatch(ctx context.Context, tenant, domain stri
 	return nil
 }
 
+// SetRecordBatchTxID records the Fabric transaction id on every record of a batch,
+// after the batch has been anchored (the tx id is unknown at stamp time).
+func (c *Collections) SetRecordBatchTxID(ctx context.Context, tenant, domain, batchID, txID string) error {
+	filter := bson.M{"tenant": tenant, "domain": domain, "batch_id": batchID}
+	if _, err := c.Records.UpdateMany(ctx, filter, bson.M{"$set": bson.M{"tx_id": txID}}); err != nil {
+		return fmt.Errorf("failed to set batch tx id: %w", err)
+	}
+	return nil
+}
+
+// AggregateRecordBatches summarizes the anchored batches of a (tenant, domain) whose
+// batched_at falls in [from, to] (RFC3339 strings; empty bounds are open), newest first.
+func (c *Collections) AggregateRecordBatches(ctx context.Context, tenant, domain, from, to string) ([]models.AuditBatch, error) {
+	match := bson.D{
+		{Key: "tenant", Value: tenant},
+		{Key: "domain", Value: domain},
+		{Key: "batch_id", Value: bson.D{{Key: "$exists", Value: true}}},
+	}
+	if from != "" || to != "" {
+		rng := bson.D{}
+		if from != "" {
+			rng = append(rng, bson.E{Key: "$gte", Value: from})
+		}
+		if to != "" {
+			rng = append(rng, bson.E{Key: "$lte", Value: to})
+		}
+		match = append(match, bson.E{Key: "batched_at", Value: rng})
+	}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: match}},
+		{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: "$batch_id"},
+			{Key: "merkle_root", Value: bson.D{{Key: "$first", Value: "$merkle_root"}}},
+			{Key: "tx_id", Value: bson.D{{Key: "$first", Value: "$tx_id"}}},
+			{Key: "batched_at", Value: bson.D{{Key: "$first", Value: "$batched_at"}}},
+			{Key: "num_records", Value: bson.D{{Key: "$sum", Value: 1}}},
+		}}},
+		{{Key: "$sort", Value: bson.D{{Key: "batched_at", Value: -1}}}},
+	}
+
+	cursor, err := c.Records.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("failed to aggregate record batches: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	batches := []models.AuditBatch{}
+	if err := cursor.All(ctx, &batches); err != nil {
+		return nil, fmt.Errorf("failed to decode record batches: %w", err)
+	}
+	return batches, nil
+}
+
 // RecordScope identifies a (tenant, domain) partition of records.
 type RecordScope struct {
 	Tenant string

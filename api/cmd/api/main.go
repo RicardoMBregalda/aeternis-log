@@ -208,8 +208,9 @@ func main() {
 	walHandler := handlers.NewWALHandler(walInstance)
 	statsHandler := handlers.NewStatsHandler(collections, mongoClient, redisCache, fabricClient, batchProcessor, walInstance)
 	publicHandler := handlers.NewPublicHandler(fabricClient, cfg.Fabric.Channel)
+	reportHandler := handlers.NewReportHandler(collections)
 
-	registerRoutes(router, authMW, healthHandler, logHandler, recordHandler, merkleHandler, walHandler, statsHandler, publicHandler)
+	registerRoutes(router, authMW, healthHandler, logHandler, recordHandler, merkleHandler, walHandler, statsHandler, publicHandler, reportHandler)
 
 	srv := &http.Server{
 		Addr:         cfg.GetServerAddr(),
@@ -282,6 +283,7 @@ func registerRoutes(
 	walHandler *handlers.WALHandler,
 	statsHandler *handlers.StatsHandler,
 	publicHandler *handlers.PublicHandler,
+	reportHandler *handlers.ReportHandler,
 ) {
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -315,6 +317,16 @@ func registerRoutes(
 		records.POST("/verify/:batchId", recordHandler.VerifyRecordBatch)
 		records.GET("/:id", recordHandler.GetRecord)
 		records.DELETE("/:id", recordHandler.DeleteRecord)
+	}
+
+	// Audit reports (per tenant/domain), behind auth like the data routes.
+	reports := router.Group("/api/v1/:domain")
+	if authMW != nil {
+		reports.Use(authMW)
+	}
+	{
+		reports.GET("/report", reportHandler.AuditReportJSON)
+		reports.GET("/report.pdf", reportHandler.AuditReportPDF)
 	}
 
 	logs := router.Group("/logs")
