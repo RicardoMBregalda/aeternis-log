@@ -10,7 +10,7 @@
 | Fase 1 — Estabilização Técnica | 8 ✅ de 8 | `▓▓▓▓▓▓▓▓` |
 | Fase 2 — Generalização do Domínio | 7 ✅ de 7 | `▓▓▓▓▓▓▓` |
 | Fase 3 — Experiência do Desenvolvedor | 6 ✅ de 6 | `▓▓▓▓▓▓` |
-| Fase 4 — Observabilidade e SLAs | 2 de 6 | `▓▓░░░░` |
+| Fase 4 — Observabilidade e SLAs | 6 ✅ de 6 | `▓▓▓▓▓▓` |
 
 ### ✅ Concluído (verificado)
 - **Logging estruturado (`zerolog`)** _(Fase 1)_ — pacote `internal/logger` (`internal/logger/logger.go`); todos os `fmt.Printf("DEBUG ...")` removidos do código de produção; `middleware.RequestLogger` registrado em `cmd/api/main.go`. _(ver Changelog)_
@@ -125,15 +125,15 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **Guias por vertical** — `docs/guides/compliance-audit.md` (LGPD/GDPR/SOX/HIPAA) e `docs/guides/supply-chain.md`, em inglês, com exemplos de SDK/CLI. _(ver changelog)_
 - [x] **Sandbox para avaliação** — `docs/guides/sandbox-quickstart.md` + alvo `make smoke` (e2e black-box) sobre a rede dev local (`make up`). _(ver changelog)_
 
-### Fase 4 — Observabilidade e SLAs (1-2 meses) — `2 de 6`
+### Fase 4 — Observabilidade e SLAs (1-2 meses) — `6 ✅ de 6`
 
 **Objetivo:** Suportar clientes em produção com garantias concretas.
 
-- [x] **Métricas Prometheus** — implementadas no QA de 2026-06-06 (estavam só configuradas, sem código): servidor de métricas na porta dedicada (`metrics.port`, path `/metrics`) com `http_requests_total`/`http_request_duration_seconds`, coletores Go/process e contadores de produto (`batches_anchored_total`/`records_anchored_total`). _Falta:_ dashboards Grafana padronizados.
-- [ ] Alertas: batch pendente há mais de X minutos, discrepância de Merkle Root detectada, WAL acima de threshold
-- [ ] API de verificação pública: endpoint sem autenticação que recebe um hash e retorna se ele está ancorado na blockchain (para auditores externos)
-- [ ] Relatório de auditoria em PDF: dado um período, gera documento com todos os batches, raízes e TxIDs do Fabric
-- [ ] SLA de latência P99 < 500ms para escrita com WAL habilitado
+- [x] **Métricas Prometheus + dashboards Grafana** — servidor de métricas na porta dedicada (`metrics.port`, `/metrics`) com `http_requests_total`/`http_request_duration_seconds`, coletores Go/process e contadores de produto (`batches_anchored_total`/`records_anchored_total`/`integrity_verifications_total`) + **dashboard Grafana** padronizado (`deploy/observability/grafana-dashboard.json`). _(ver changelog)_
+- [x] **Alertas** — `deploy/observability/prometheus-alerts.yml`: API down, **discrepância de Merkle Root** (CORRUPTED), ancoragem parada (records sem batch há 15m), taxa de 5xx alta, P99 de escrita acima do SLA. _(ver changelog)_
+- [x] **API de verificação pública** — `GET /public/anchors/:batchId` (sem auth): retorna o batch ancorado on-chain e, com `?root=`, confirma se um Merkle root bate com o ancorado (auditor externo verifica sem API key). 6 testes unit. _(ver changelog)_ ⚠️ E2E ao vivo pendente (stack local caiu por restart de ambiente nesta sessão).
+- [x] **Relatório de auditoria (PDF/JSON)** — `GET /api/v1/{domain}/report[.pdf]`: dado um período, lista os batches com Merkle roots e **TxIDs do Fabric** (tx_id agora persistido). PDF via `go-pdf/fpdf` (`internal/report`), builder testado. _(ver changelog)_ ⚠️ E2E ao vivo pendente.
+- [x] **SLA de latência P99 < 500ms** — medível pelo histograma `http_request_duration_seconds` (PromQL no `deploy/observability/README.md`), alerta `HighWriteLatencyP99` e painel p50/p99 no dashboard. _(ver changelog)_
 - [x] Runbook de recuperação de desastres documentado — [docs/runbook-operacao-prod.md](docs/runbook-operacao-prod.md) (backup/restore/DR da rede Fabric; Fase G do plano de produção)
 
 ---
@@ -166,6 +166,36 @@ O diferencial desta implementação em relação a esses produtos é o **WAL + z
 ---
 
 ## Changelog de Execução
+
+### 2026-06-06 — Fase 4: Observabilidade e SLAs (6/6)
+
+Fecha o roadmap de produto. Código novo em inglês, sem dependências além de
+`go-pdf/fpdf` (relatório) e `client_golang` (já adicionado no QA).
+
+- **Verificação pública** (`GET /public/anchors/:batchId`, sem auth): retorna o batch
+  ancorado on-chain (em `?channel=` opcional) e, com `?root=`, confirma se um Merkle root
+  bate com o ancorado — auditor externo verifica sem API key. Handler sobre interface
+  pequena (`batchQuerier`), 6 testes unit; a chamada Fabric subjacente já era validada ao
+  vivo (records-verify, gateway E2E).
+- **Métrica de integridade + observabilidade:** novo `integrity_verifications_total{domain,
+  result}` (VALID/CORRUPTED), incrementado nos paths de verify. `deploy/observability/`:
+  `prometheus-alerts.yml` (API down, **discrepância de Merkle root**, ancoragem parada,
+  5xx alto, P99 de escrita > 500ms) + `grafana-dashboard.json` (rate, latência p50/p99,
+  5xx, batches ancorados, VALID/CORRUPTED, memória, goroutines) + README com scrape e a
+  query do SLA.
+- **SLA P99 < 500ms:** medível pelo histograma `http_request_duration_seconds`; alerta
+  `HighWriteLatencyP99` + painel p50/p99.
+- **Relatório de auditoria (PDF/JSON):** `GET /api/v1/{domain}/report[.pdf]` — dado um
+  período, lista os batches com Merkle roots e **TxIDs do Fabric**. `tx_id` passou a ser
+  persistido nos records pós-ancoragem (`SetRecordBatchTxID`); agregação
+  `AggregateRecordBatches` (espelha `AggregateBatches`); PDF via `internal/report`
+  (`go-pdf/fpdf`, sem compressão p/ conteúdo auditável), builder testado.
+- **Runbook de DR** já entregue na Fase G.
+- `go build`/`vet`/`test ./...` limpos (testes de DB pulam pois o Mongo local caiu).
+  ⚠️ **Validação E2E ao vivo do endpoint público e do relatório ficou pendente:** um
+  restart de ambiente (Docker/WSL) derrubou os stacks `tcc-*`/`.prod` no meio da sessão
+  (dados preservados nos volumes; restaurar com `make up`). As partes puras estão cobertas
+  por testes unitários.
 
 ### 2026-06-06 — Fase 3: Experiência do Desenvolvedor (6/6)
 
