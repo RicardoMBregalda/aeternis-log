@@ -1,0 +1,100 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "Prometheus data source scraping the Anchor API",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "title": "Anchor — API & Anchoring",
+  "uid": "anchor-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP request rate by status",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (status) (rate(http_requests_total[5m]))", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Write latency (POST records)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{route=\"/api/v1/:domain/records\", method=\"POST\"}[5m])))", "legendFormat": "p99", "refId": "A" },
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{route=\"/api/v1/:domain/records\", method=\"POST\"}[5m])))", "legendFormat": "p50", "refId": "B" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "5xx error ratio",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1)", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Batches anchored (rate)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 9, "x": 6, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (domain) (rate(batches_anchored_total[5m]))", "legendFormat": "{{domain}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Integrity verifications (5m)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 9, "x": 15, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (result) (increase(integrity_verifications_total[5m]))", "legendFormat": "{{result}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Resident memory",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "expr": "process_resident_memory_bytes{job=\"anchor-api\"}", "legendFormat": "rss", "refId": "A" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Goroutines",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "go_goroutines{job=\"anchor-api\"}", "legendFormat": "goroutines", "refId": "A" }
+      ]
+    }
+  ]
+}

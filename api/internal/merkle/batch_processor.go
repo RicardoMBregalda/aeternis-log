@@ -318,6 +318,7 @@ func (bp *BatchProcessor) VerifyBatch(ctx context.Context, batchID string) (*mod
 
 	// Compare
 	isValid := originalMerkleRoot == recalculatedMerkleRoot
+	metrics.RecordVerification("logs", isValid)
 
 	integrity := "VALID"
 	message := "Batch integrity verified successfully"
@@ -450,6 +451,7 @@ func (bp *BatchProcessor) VerifyRecordBatch(ctx context.Context, tenant, domain,
 	original := records[0].MerkleRoot
 	recalculated, _ := models.CalculateRecordMerkleRoot(records)
 	isValid := original == recalculated
+	metrics.RecordVerification(domain, isValid)
 
 	integrity := "VALID"
 	message := "Batch integrity verified successfully"
