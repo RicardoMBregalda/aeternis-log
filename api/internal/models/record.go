@@ -26,6 +26,8 @@ type Record struct {
 	CreatedAt  FlexTime  `json:"created_at" bson:"created_at"`
 	BatchID    string    `json:"batch_id,omitempty" bson:"batch_id,omitempty"`
 	MerkleRoot string    `json:"merkle_root,omitempty" bson:"merkle_root,omitempty"`
+	// TxID is the Fabric transaction that anchored the batch (set after anchoring).
+	TxID       string    `json:"tx_id,omitempty" bson:"tx_id,omitempty"`
 	BatchedAt  *FlexTime `json:"batched_at,omitempty" bson:"batched_at,omitempty"`
 	// DeletedAt marks a soft-deleted record; excluded from the hash so deleting
 	// never invalidates the integrity proof or the on-chain anchor.
@@ -120,4 +122,25 @@ type RecordBatchResult struct {
 	// Channel is the Fabric channel the batch was anchored to (the tenant's
 	// dedicated channel when mapped, else the default).
 	Channel string `json:"channel,omitempty"`
+}
+
+// AuditBatch summarizes one anchored batch for an audit report.
+type AuditBatch struct {
+	BatchID    string `json:"batch_id" bson:"_id"`
+	MerkleRoot string `json:"merkle_root" bson:"merkle_root"`
+	TxID       string `json:"tx_id" bson:"tx_id"`
+	NumRecords int    `json:"num_records" bson:"num_records"`
+	BatchedAt  string `json:"batched_at" bson:"batched_at"`
+}
+
+// AuditReport is the data behind a tenant/domain audit report over a time range.
+type AuditReport struct {
+	Tenant      string       `json:"tenant"`
+	Domain      string       `json:"domain"`
+	From        string       `json:"from"`
+	To          string       `json:"to"`
+	GeneratedAt string       `json:"generated_at"`
+	Batches     []AuditBatch `json:"batches"`
+	TotalBatches int         `json:"total_batches"`
+	TotalRecords int         `json:"total_records"`
 }

@@ -419,6 +419,10 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, tenant, domain
 		result.TxID = inv.TxID
 		result.Anchored = true
 		result.Channel = channel
+		// Persist the tx id on the batch's records so audit reports can cite it.
+		if err := bp.collections.SetRecordBatchTxID(ctx, tenant, domain, batchID, inv.TxID); err != nil {
+			zlog.Warn().Err(err).Str("batch_id", batchID).Msg("failed to persist batch tx id")
+		}
 		bp.notifyAnchored(tenant, domain, batchID, merkleRoot, len(records), inv.TxID)
 		metrics.RecordAnchoredBatch(tenant, domain, len(records))
 	}
