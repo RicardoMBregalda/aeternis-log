@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 )
 
 // TestGatewayBackendConstruct loads the real Admin@org1 identity and peer TLS

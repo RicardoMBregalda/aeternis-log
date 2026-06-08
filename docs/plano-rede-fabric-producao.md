@@ -22,7 +22,7 @@ garantia distribuída.
 | Endosso | `MAJORITY Endorsement` com 1 org = só Org1 | `MAJORITY` (2 de 3) entre orgs independentes |
 | Domínios | `example.com` / `org1.example.com` (compartilhado) | um domínio por org (`org1.acme.io`, etc.) |
 | Segredos | `priv_sk` afrouxado para 0644 (gambiarra dev) | chave como *secret* do runtime / PKCS#11/HSM |
-| Topologia | 1 host, 1 docker-compose, rede `tcc_log_network` | orgs em hosts/VMs/k8s separados (ou staging 1-host) |
+| Topologia | 1 host, 1 docker-compose, rede `aeternislog_network` | orgs em hosts/VMs/k8s separados (ou staging 1-host) |
 | API/gateway | conecta a `peer0.org1`, endosso de 1 org | discovery + coleta de endosso **cross-org** |
 
 ## 2. Decisão-chave de topologia
@@ -47,7 +47,7 @@ A rede de dev atual valida todos os E2Es do produto. A rede nova deve nascer com
 **stack separada e paralela**, sem mutar a existente:
 
 - Novo compose: `hybrid-architecture/fabric-network/docker-compose.prod.yml`
-- Nova rede Docker: `tcc_log_network_prod` (não a `tcc_log_network`)
+- Nova rede Docker: `aeternislog_network_prod` (não a `aeternislog_network`)
 - Novo diretório de crypto: `crypto-config-prod/` (não tocar em `crypto-config/`)
 - Portas deslocadas (ex.: orderers 7050/8050/9050; peers por org em faixas distintas)
 - Novos profiles em `configtx.yaml` (`ThreeOrgsGenesis`, `ThreeOrgsChannel`) — **adicionar**, não substituir os atuais
@@ -112,7 +112,7 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
 > `fabric-gateway` já coleta a `MAJORITY` 2/3 via **service discovery** (a discovery a
 > partir da Org1 retorna os 3 orgs no plano de endosso; anchor peers vieram no genesis).
 > Configurado via env (`FABRIC_*`) numa **stack de API paralela**
-> (`api/docker-compose.prod.yml`, rede `tcc_log_network_prod`, portas 5002/9091,
+> (`api/docker-compose.prod.yml`, rede `aeternislog_network_prod`, portas 5002/9091,
 > identidade Org1 emitida pela CA). E2E provado: create → batch/anchor (`tx_id` real) →
 > verify `VALID` → tamper → `CORRUPTED` (409); batch lido on-chain pela Org3. A API dev
 > (:5001) seguiu intacta. _Nota:_ a API prod roda como root para ler o crypto do CA
@@ -206,7 +206,7 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
       rede. ✅ _(Fase F: criar records → batch/anchor → verify `VALID`; adulterar 1 record
       no Mongo → verify `CORRUPTED` 409.)_
 - [x] A rede de dev (`make up`) continua intacta e validando em paralelo
-      (`tcc_log_network` + containers `*.example.com` + API dev na :5001 no ar). ✅
+      (`aeternislog_network` + containers `*.example.com` + API dev na :5001 no ar). ✅
 
 > **Onde parou (2026-06-06):** **todas as fases A–H concluídas** no staging de 1 host — 4
 > CAs, Raft de 3 orderers via channel participation, 3 peer orgs com CouchDB, canal
@@ -220,7 +220,7 @@ Cada fase é incremental, testável isoladamente e não derruba a anterior.
 > `orderer-status.sh`, `anchor.sh`, `fault-tolerance.sh`, `discover-peers.sh`,
 > `query-batch.sh`, `create-tenant-channel.sh`, `tenant-channel-steps.sh`,
 > `build-api-identity.sh`, `backup-ledger.sh`. Stacks da API prod:
-> `api/docker-compose.prod.yml` + `api/config.prod.yaml` (rede `tcc_log_network_prod`,
+> `api/docker-compose.prod.yml` + `api/config.prod.yaml` (rede `aeternislog_network_prod`,
 > portas 5002/9091).
 
 ## 6. Riscos e mitigação (resumo)

@@ -40,7 +40,7 @@ falta para produção real (multi-host)** — onde o gargalo é infra/governanç
 ### Estado atual (staging) 🟡
 - TLS habilitado ponta a ponta (peers, orderers, CAs, gateway). Certs emitidos pela
   Fabric CA com SANs (`--csr.hosts`) incluindo o hostname do nó e `localhost`.
-- Domínios são `*.example.com` resolvidos pela rede Docker (`tcc_log_network_prod`).
+- Domínios são `*.example.com` resolvidos pela rede Docker (`aeternislog_network_prod`).
 
 ### Para produção real ⬜
 - **DNS real por org** (`peer0.org1.acme.io`, etc.) com SANs corretos; cada org opera sua

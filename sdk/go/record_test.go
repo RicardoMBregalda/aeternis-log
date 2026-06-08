@@ -1,4 +1,4 @@
-package anchor
+package aeternislog
 
 import "testing"
 

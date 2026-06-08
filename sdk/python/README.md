@@ -1,4 +1,4 @@
-# anchor-sdk (Python)
+# aeternislog (Python)
 
 Python client and **offline verifier** for the Tamper-Evident Data Anchoring API.
 
@@ -9,7 +9,7 @@ verify integrity without trusting the API. Standard library only — no dependen
 ## Install
 
 ```bash
-pip install anchor-sdk          # once published
+pip install aeternislog          # once published
 # or, from this repo:
 pip install ./sdk/python
 ```
@@ -17,7 +17,7 @@ pip install ./sdk/python
 ## Library
 
 ```python
-from anchor import Client
+from aeternislog import Client
 
 client = Client("http://localhost:5001", api_key="my-key")  # api_key optional
 
@@ -37,7 +37,7 @@ assert result.is_valid
 ### Trustless local verification
 
 ```python
-from anchor import Record, merkle_root, verify_records_locally
+from aeternislog import Record, merkle_root, verify_records_locally
 
 records = [Record.from_api(r) for r in client.list_records("audit")["records"]]
 
@@ -61,21 +61,21 @@ so hashes are identical across the Go server, the Go SDK and this SDK.
 
 ## CLI — offline audit
 
-The package installs an `anchor` command for auditors who hold a CSV export of records
+The package installs an `aeternislog` command for auditors who hold a CSV export of records
 and want to confirm it matches what was anchored on-chain.
 
 ```bash
 # Fully offline: recompute the root and compare with the on-chain root.
-anchor verify --file records.csv --expected-root <root from the blockchain>
+aeternislog verify --file records.csv --expected-root <root from the blockchain>
 
 # Or let the tool fetch the anchored root from the API by batch id.
-anchor verify --file records.csv --api http://host:5001 --domain audit --batch-id audit-...
+aeternislog verify --file records.csv --api http://host:5001 --domain audit --batch-id audit-...
 
 # Just print the Merkle root of a CSV.
-anchor merkle --file records.csv
+aeternislog merkle --file records.csv
 
 # Hash a single record.
-anchor hash --id ID --timestamp 2026-06-06T00:00:00Z --source app --payload '{"k":"v"}'
+aeternislog hash --id ID --timestamp 2026-06-06T00:00:00Z --source app --payload '{"k":"v"}'
 ```
 
 `verify` exits `0` when **VALID** and `2` when **CORRUPTED**, so it drops into CI/cron.
@@ -89,6 +89,6 @@ CSV columns: `id,timestamp,source,payload` (payload is a JSON object string); op
 ```bash
 cd sdk/python
 python -m unittest discover -s tests -v          # unit tests (no network)
-ANCHOR_BASE_URL=http://localhost:5001 \
+AETERNISLOG_BASE_URL=http://localhost:5001 \
   python -m unittest tests.integration_test -v   # live test against a running API
 ```

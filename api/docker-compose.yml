@@ -3,14 +3,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: tcc-go-api
+    container_name: aeternislog-api
     hostname: go-api
     ports:
       - "5001:5001"  # API port
       - "9090:9090"  # Metrics port
     volumes:
       - ./config.yaml:/app/config.yaml:ro
-      - wal-data:/var/log/tcc-wal
+      - wal-data:/var/log/aeternislog-wal
       # crypto material for the "gateway" (gRPC) transport (default), mounted read-only.
       - ../hybrid-architecture/fabric-network/crypto-config:/fabric-crypto:ro
       # docker.sock is only needed for the legacy "docker-exec" transport; uncomment to use it:
@@ -22,7 +22,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - FABRIC_API_URL=http://fabric-api:4000
-      - WAL_DIRECTORY=/var/log/tcc-wal
+      - WAL_DIRECTORY=/var/log/aeternislog-wal
       - LOG_LEVEL=info
       # Fabric transport defaults to "gateway" (gRPC), using the crypto mounted
       # at /fabric-crypto and the config.yaml paths. To fall back to the legacy
@@ -31,7 +31,7 @@ services:
       - mongodb
       - redis
     networks:
-      - tcc-network
+      - aeternislog-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
@@ -42,7 +42,7 @@ services:
 
   mongodb:
     image: mongo:7.0
-    container_name: tcc-mongodb
+    container_name: aeternislog-mongodb
     hostname: mongodb
     ports:
       - "27017:27017"
@@ -51,7 +51,7 @@ services:
     environment:
       - MONGO_INITDB_DATABASE=logdb
     networks:
-      - tcc-network
+      - aeternislog-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
@@ -61,7 +61,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: tcc-redis
+    container_name: aeternislog-redis
     hostname: redis
     ports:
       - "6379:6379"
@@ -71,7 +71,7 @@ services:
     # WAL's fsync guarantee when wal.backend is "redis" (zero data loss).
     command: redis-server --appendonly yes --appendfsync always
     networks:
-      - tcc-network
+      - aeternislog-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -88,6 +88,6 @@ volumes:
     driver: local
 
 networks:
-  tcc-network:
+  aeternislog-network:
     external: true
-    name: tcc_log_network
+    name: aeternislog_network

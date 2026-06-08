@@ -1,4 +1,4 @@
-# Configuration file for Log Management API (Go version)
+# Configuration file for AeternisLog API (Go version)
 
 server:
   host: "0.0.0.0"
@@ -74,7 +74,7 @@ wal:
   # depends on Redis persistence: run Redis with AOF enabled
   # (appendonly yes; appendfsync always for parity with the file fsync).
   backend: "file"
-  directory: "/var/log/tcc-wal"
+  directory: "/var/log/aeternislog-wal"
   check_interval: 5s
   max_file_size_mb: 100
   rotation_enabled: true

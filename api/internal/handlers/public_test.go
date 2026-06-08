@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/fabric"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/fabric"
 	"github.com/gin-gonic/gin"
 )
 

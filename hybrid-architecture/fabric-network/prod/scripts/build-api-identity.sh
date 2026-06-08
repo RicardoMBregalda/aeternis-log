@@ -13,7 +13,7 @@
 set -euo pipefail
 
 N="${1:-1}"
-PROD="/root/tcc-log-management/hybrid-architecture/fabric-network/prod"
+PROD="/root/aeternis-log/hybrid-architecture/fabric-network/prod"
 DOMAIN="org${N}.example.com"
 SRC="$PROD/organizations/peerOrganizations/$DOMAIN"
 DST="$PROD/api-identity/org${N}"

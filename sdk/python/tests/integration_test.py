@@ -1,22 +1,22 @@
 """Live integration test against a running API. Not auto-discovered (filename does
 not match test*.py). Run explicitly:
 
-    ANCHOR_BASE_URL=http://localhost:5001 \\
+    AETERNISLOG_BASE_URL=http://localhost:5001 \\
       python -m unittest tests.integration_test -v
 
-Set ANCHOR_API_KEY too when the API has auth enabled.
+Set AETERNISLOG_API_KEY too when the API has auth enabled.
 """
 import os
 import time
 import unittest
 
-from anchor import Client
+from aeternislog import Client
 
 
-@unittest.skipUnless(os.getenv("ANCHOR_BASE_URL"), "set ANCHOR_BASE_URL to run the live test")
+@unittest.skipUnless(os.getenv("AETERNISLOG_BASE_URL"), "set AETERNISLOG_BASE_URL to run the live test")
 class TestSDKLive(unittest.TestCase):
     def setUp(self):
-        self.client = Client(os.environ["ANCHOR_BASE_URL"], api_key=os.getenv("ANCHOR_API_KEY", ""))
+        self.client = Client(os.environ["AETERNISLOG_BASE_URL"], api_key=os.getenv("AETERNISLOG_API_KEY", ""))
         self.domain = "pysdktest"
 
     def test_create_batch_verify(self):

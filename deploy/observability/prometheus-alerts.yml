@@ -1,11 +1,11 @@
 # Prometheus alerting rules for the Anchor API.
 # Load via prometheus.yml: rule_files: ["prometheus-alerts.yml"].
-# Assumes the API is scraped with job="anchor-api" (see README.md).
+# Assumes the API is scraped with job="aeternislog-api" (see README.md).
 groups:
-  - name: anchor-api
+  - name: aeternislog-api
     rules:
       - alert: AnchorApiDown
-        expr: up{job="anchor-api"} == 0
+        expr: up{job="aeternislog-api"} == 0
         for: 2m
         labels:
           severity: critical

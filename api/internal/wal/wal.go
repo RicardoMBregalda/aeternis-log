@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
 )
 
 // WriteAheadLog implements a Write-Ahead Log for guaranteed durability

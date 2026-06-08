@@ -1,11 +1,11 @@
 # Fabric CA per organization (production-staging on a single host).
 # One CA per peer org (Org1/Org2/Org3) plus one for the orderer org.
 # Identities are provisioned with fabric-ca-client (register/enroll) — no cryptogen.
-# Isolated from the dev stack: own network (tcc_log_network_prod) and host ports.
+# Isolated from the dev stack: own network (aeternislog_network_prod) and host ports.
 
 networks:
   prod-net:
-    name: tcc_log_network_prod
+    name: aeternislog_network_prod
     external: true
 
 services:

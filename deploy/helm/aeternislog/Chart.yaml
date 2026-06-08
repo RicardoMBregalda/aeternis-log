@@ -1,5 +1,5 @@
 apiVersion: v2
-name: anchor
+name: aeternislog
 description: Tamper-Evident Data Anchoring API (Merkle + Hyperledger Fabric) with MongoDB and Redis
 type: application
 version: 0.1.0
@@ -10,6 +10,6 @@ keywords:
   - audit
   - compliance
   - tamper-evident
-home: https://github.com/RicardoMBregalda/tcc-log-management
+home: https://github.com/RicardoMBregalda/aeternis-log
 maintainers:
   - name: Ricardo M. Bregalda

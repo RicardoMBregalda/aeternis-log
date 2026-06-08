@@ -7,8 +7,8 @@
 # after a clean (rm -rf organizations/peerOrganizations organizations/ordererOrganizations).
 set -euo pipefail
 
-PROD="/root/tcc-log-management/hybrid-architecture/fabric-network/prod"
-BIN="/root/tcc-log-management/hybrid-architecture/fabric-network/bin"
+PROD="/root/aeternis-log/hybrid-architecture/fabric-network/prod"
+BIN="/root/aeternis-log/hybrid-architecture/fabric-network/bin"
 FCA="$BIN/fabric-ca-client"
 ORGS="$PROD/organizations"
 PEERORGS="$ORGS/peerOrganizations"

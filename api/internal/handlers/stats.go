@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/cache"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/database"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/fabric"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/merkle"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/wal"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/cache"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/database"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/fabric"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/merkle"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/wal"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 )

@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/database"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/report"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/database"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/report"
 	"github.com/gin-gonic/gin"
 )
 

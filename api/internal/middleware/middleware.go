@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/logger"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/logger"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
 	"github.com/gin-gonic/gin"
 )
 

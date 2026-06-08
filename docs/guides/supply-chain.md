@@ -16,8 +16,8 @@ Use the domain to scope a traceable unit — e.g. a shipment id — and record o
 custody step. The payload carries the step details.
 
 ```python
-from anchor import Client
-c = Client("https://anchor.example.com", api_key="logistics-key")
+from aeternislog import Client
+c = Client("https://aeternislog.example.com", api_key="logistics-key")
 
 shipment = "shipment-2026-000123"
 for step in [
@@ -40,7 +40,7 @@ was anchored — independently of the operator:
 
 ```bash
 # Export the shipment's events to a CSV (in event order) and verify offline:
-anchor verify --file shipment-000123.csv --api https://anchor.example.com \
+aeternislog verify --file shipment-000123.csv --api https://aeternislog.example.com \
   --domain shipment-2026-000123 --batch-id <batch_id>
 # exit 0 = VALID (history intact), exit 2 = CORRUPTED (an event was altered/reordered)
 ```
@@ -63,7 +63,7 @@ edits — which is exactly the property a custody chain needs.
 - **Batch on cadence**: let the auto-batcher anchor on a timer, or call `batch_records`
   at logical checkpoints (e.g. on `delivered`).
 - **Partner verification**: hand partners the CSV export + the on-chain root; they run
-  `anchor verify` themselves — no access to your systems required.
+  `aeternislog verify` themselves — no access to your systems required.
 
 See also the [Sandbox Quickstart](sandbox-quickstart.md) and the SDK READMEs
 ([Go](../../sdk/go/README.md), [Python](../../sdk/python/README.md)).

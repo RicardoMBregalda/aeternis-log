@@ -2,20 +2,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "anchor.redisHost" . }}
+  name: {{ include "aeternislog.redisHost" . }}
   labels:
-    {{- include "anchor.labels" . | nindent 4 }}
+    {{- include "aeternislog.labels" . | nindent 4 }}
     app.kubernetes.io/component: redis
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "anchor.selectorLabels" . | nindent 6 }}
+      {{- include "aeternislog.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: redis
   template:
     metadata:
       labels:
-        {{- include "anchor.selectorLabels" . | nindent 8 }}
+        {{- include "aeternislog.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: redis
     spec:
       containers:
@@ -35,13 +35,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "anchor.redisHost" . }}
+  name: {{ include "aeternislog.redisHost" . }}
   labels:
-    {{- include "anchor.labels" . | nindent 4 }}
+    {{- include "aeternislog.labels" . | nindent 4 }}
     app.kubernetes.io/component: redis
 spec:
   selector:
-    {{- include "anchor.selectorLabels" . | nindent 4 }}
+    {{- include "aeternislog.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: redis
   ports:
     - port: 6379

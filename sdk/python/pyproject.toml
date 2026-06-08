@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "anchor-sdk"
+name = "aeternislog"
 version = "0.1.0"
 description = "Python client and offline verifier for the Tamper-Evident Data Anchoring API"
 readme = "README.md"
@@ -31,11 +31,11 @@ classifiers = [
 dependencies = []  # standard library only
 
 [project.scripts]
-anchor = "anchor.cli:main"
+aeternislog = "aeternislog.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/RicardoMBregalda/tcc-log-management"
-Source = "https://github.com/RicardoMBregalda/tcc-log-management/tree/main/sdk/python"
+Homepage = "https://github.com/RicardoMBregalda/aeternis-log"
+Source = "https://github.com/RicardoMBregalda/aeternis-log/tree/main/sdk/python"
 
 [tool.setuptools]
-packages = ["anchor"]
+packages = ["aeternislog"]

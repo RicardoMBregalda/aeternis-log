@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
 )
 
 func TestBuildAuditReportPDF(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 )
 
 // Backend is the transport used to talk to the Fabric peer. The docker-exec

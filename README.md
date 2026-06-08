@@ -1,4 +1,4 @@
-# Log Management — Tamper-Evident Log Anchoring
+# AeternisLog — Tamper-Evident Log Anchoring
 
 Log management API with **cryptographic proof of integrity**. Logs go to MongoDB (fast, queryable), are grouped into **Merkle Trees**, and the root of each batch is anchored on **Hyperledger Fabric** (immutable, auditable). A **Write-Ahead Log (WAL)** with `fsync` guarantees zero data loss before any processing.
 
@@ -45,7 +45,7 @@ make api       # runs the API in a container (without Fabric)
 
 The API comes up at **http://localhost:5001** — Swagger at `/swagger/index.html`, health at `/health`.
 
-> The Fabric network and the API share the Docker network `tcc_log_network`, created automatically by `make`. Its absence was previously what made `docker compose up` create nothing.
+> The Fabric network and the API share the Docker network `aeternislog_network`, created automatically by `make`. Its absence was previously what made `docker compose up` create nothing.
 
 ## Project structure
 
@@ -110,7 +110,7 @@ Records are batched per domain (automatically, or via `POST .../records/batch`),
 
 **Webhook:** set `webhook.enabled` + `webhook.url` (or `WEBHOOK_ENABLED`/`WEBHOOK_URL`) to receive a `batch.anchored` callback every time a batch — logs or records — is anchored. The JSON payload (`domain`, `batch_id`, `merkle_root`, `num_records`, `tx_id`, `anchored_at`) is signed with HMAC-SHA256 in `X-Webhook-Signature` when a `webhook.secret` is set; delivery is async with retries.
 
-**Go SDK:** [`sdk/go`](sdk/go) (package `anchor`, standard-library only) wraps the API with automatic retries and recomputes record hashes / Merkle roots **locally**, so integrity can be verified without trusting the server. See [sdk/go/README.md](sdk/go/README.md).
+**Go SDK:** [`sdk/go`](sdk/go) (package `aeternislog`, standard-library only) wraps the API with automatic retries and recomputes record hashes / Merkle roots **locally**, so integrity can be verified without trusting the server. See [sdk/go/README.md](sdk/go/README.md).
 
 ## Authentication & rate limiting
 

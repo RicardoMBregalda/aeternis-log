@@ -4,9 +4,9 @@ import unittest
 import urllib.error
 from unittest import mock
 
-from anchor.client import Client
-from anchor.errors import APIError, HashMismatchError
-from anchor.record import Record
+from aeternislog.client import Client
+from aeternislog.errors import APIError, HashMismatchError
+from aeternislog.record import Record
 
 
 class _Resp:
@@ -42,13 +42,13 @@ def _good_server(req, timeout=None):
 class TestClient(unittest.TestCase):
     def setUp(self):
         # No real backoff sleeps in tests.
-        patcher = mock.patch("anchor.client.time.sleep")
+        patcher = mock.patch("aeternislog.client.time.sleep")
         self.addCleanup(patcher.stop)
         patcher.start()
         self.client = Client("http://localhost:5001", max_retries=2)
 
     def test_create_record_trustless_ok(self):
-        with mock.patch("anchor.client.urllib.request.urlopen", side_effect=_good_server):
+        with mock.patch("aeternislog.client.urllib.request.urlopen", side_effect=_good_server):
             rec = self.client.create_record("audit", "app", {"event": "login", "n": 3})
         self.assertEqual(len(rec.id), 32)  # 16 random bytes hex
         self.assertEqual(rec.hash, rec.compute_hash())
@@ -57,13 +57,13 @@ class TestClient(unittest.TestCase):
         def bad_server(req, timeout=None):
             return _Resp(json.dumps({"data": {"id": "x", "hash": "deadbeef"}}))
 
-        with mock.patch("anchor.client.urllib.request.urlopen", side_effect=bad_server):
+        with mock.patch("aeternislog.client.urllib.request.urlopen", side_effect=bad_server):
             with self.assertRaises(HashMismatchError):
                 self.client.create_record("audit", "app", {"k": "v"})
 
     def test_4xx_not_retried(self):
         m = mock.Mock(side_effect=_http_error(400, '{"error":"bad"}'))
-        with mock.patch("anchor.client.urllib.request.urlopen", m):
+        with mock.patch("aeternislog.client.urllib.request.urlopen", m):
             with self.assertRaises(APIError) as ctx:
                 self.client.get_record("audit", "x")
         self.assertEqual(ctx.exception.status_code, 400)
@@ -75,7 +75,7 @@ class TestClient(unittest.TestCase):
             _http_error(503, "still"),
             _Resp(json.dumps({"id": "r1", "hash": "abc"})),
         ])
-        with mock.patch("anchor.client.urllib.request.urlopen", m):
+        with mock.patch("aeternislog.client.urllib.request.urlopen", m):
             rec = self.client.get_record("audit", "r1")
         self.assertEqual(rec.id, "r1")
         self.assertEqual(m.call_count, 3)
@@ -85,7 +85,7 @@ class TestClient(unittest.TestCase):
             urllib.error.URLError("conn refused"),
             _Resp(json.dumps({"id": "r2", "hash": "x"})),
         ])
-        with mock.patch("anchor.client.urllib.request.urlopen", m):
+        with mock.patch("aeternislog.client.urllib.request.urlopen", m):
             rec = self.client.get_record("audit", "r2")
         self.assertEqual(rec.id, "r2")
         self.assertEqual(m.call_count, 2)
@@ -96,7 +96,7 @@ class TestClient(unittest.TestCase):
             "original_merkle_root": "aaa", "recalculated_merkle_root": "bbb",
             "integrity": "CORRUPTED",
         })
-        with mock.patch("anchor.client.urllib.request.urlopen", side_effect=_http_error(409, payload)):
+        with mock.patch("aeternislog.client.urllib.request.urlopen", side_effect=_http_error(409, payload)):
             res = self.client.verify_batch("audit", "b1")
         self.assertFalse(res.is_valid)
         self.assertEqual(res.integrity, "CORRUPTED")
@@ -107,7 +107,7 @@ class TestClient(unittest.TestCase):
             "merkle_root": "root", "num_records": 5, "tx_id": "tx", "anchored": True,
             "channel": "logchannel",
         })
-        with mock.patch("anchor.client.urllib.request.urlopen", side_effect=lambda *a, **k: _Resp(body)):
+        with mock.patch("aeternislog.client.urllib.request.urlopen", side_effect=lambda *a, **k: _Resp(body)):
             res = self.client.batch_records("audit")
         self.assertTrue(res.anchored)
         self.assertEqual(res.num_records, 5)

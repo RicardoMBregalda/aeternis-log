@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/fabric"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/fabric"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 	"github.com/google/uuid"
 )
 

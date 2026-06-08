@@ -274,7 +274,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		},
 		WAL: WALConfig{
 			Enabled:         true,
-			Directory:       "/var/log/tcc-wal",
+			Directory:       "/var/log/aeternislog-wal",
 			CheckInterval:   5 * time.Second,
 			MaxFileSizeMB:   100,
 			RotationEnabled: true,

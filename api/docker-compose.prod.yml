@@ -1,8 +1,8 @@
 # Parallel API stack pointing at the production-staging Fabric network (Phase F).
-# Mirrors docker-compose.yml but on tcc_log_network_prod, with shifted host ports and
+# Mirrors docker-compose.yml but on aeternislog_network_prod, with shifted host ports and
 # the Org1 identity issued by the prod Fabric CA. The dev API stack stays untouched.
 #
-#   docker compose -f docker-compose.prod.yml -p tcc-prod up -d --build
+#   docker compose -f docker-compose.prod.yml -p aeternislog-prod up -d --build
 #
 # The Fabric Gateway connects to peer0.org1 and collects the MAJORITY (2/3) endorsement
 # from Org2/Org3 automatically via service discovery — no client-side peer list needed.
@@ -12,8 +12,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tcc-go-api:latest
-    container_name: tcc-go-api-prod
+    image: aeternislog-api:latest
+    container_name: aeternislog-api-prod
     hostname: go-api-prod
     mem_limit: 512m
     cpus: 1.0
@@ -29,7 +29,7 @@ services:
       # Self-contained prod config: auth (per-tenant keys) + fabric (gateway, Org1
       # identity, tenant_channels). See api/config.prod.yaml.
       - ./config.prod.yaml:/app/config.yaml:ro
-      - wal-data-prod:/var/log/tcc-wal
+      - wal-data-prod:/var/log/aeternislog-wal
       # Least-privilege identity bundle (Phase G): only Org1's admin cert+key + peer
       # TLS CA, owned by uid 1000. Built by prod/scripts/build-api-identity.sh.
       - ../hybrid-architecture/fabric-network/prod/api-identity/org1:/fabric-identity:ro
@@ -50,7 +50,7 @@ services:
 
   mongodb-prod:
     image: mongo:7.0
-    container_name: tcc-mongodb-prod
+    container_name: aeternislog-mongodb-prod
     hostname: mongodb-prod
     mem_limit: 1g
     cpus: 1.0
@@ -66,7 +66,7 @@ services:
 
   redis-prod:
     image: redis:7-alpine
-    container_name: tcc-redis-prod
+    container_name: aeternislog-redis-prod
     hostname: redis-prod
     mem_limit: 512m
     cpus: 0.5
@@ -90,4 +90,4 @@ volumes:
 networks:
   prod-net:
     external: true
-    name: tcc_log_network_prod
+    name: aeternislog_network_prod

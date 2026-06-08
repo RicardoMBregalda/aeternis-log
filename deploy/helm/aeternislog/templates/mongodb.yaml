@@ -2,9 +2,9 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "anchor.mongoHost" . }}
+  name: {{ include "aeternislog.mongoHost" . }}
   labels:
-    {{- include "anchor.labels" . | nindent 4 }}
+    {{- include "aeternislog.labels" . | nindent 4 }}
     app.kubernetes.io/component: mongodb
 spec:
   accessModes: ["ReadWriteOnce"]
@@ -15,9 +15,9 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "anchor.mongoHost" . }}
+  name: {{ include "aeternislog.mongoHost" . }}
   labels:
-    {{- include "anchor.labels" . | nindent 4 }}
+    {{- include "aeternislog.labels" . | nindent 4 }}
     app.kubernetes.io/component: mongodb
 spec:
   replicas: 1
@@ -25,12 +25,12 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "anchor.selectorLabels" . | nindent 6 }}
+      {{- include "aeternislog.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: mongodb
   template:
     metadata:
       labels:
-        {{- include "anchor.selectorLabels" . | nindent 8 }}
+        {{- include "aeternislog.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: mongodb
     spec:
       containers:
@@ -54,18 +54,18 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: {{ include "anchor.mongoHost" . }}
+            claimName: {{ include "aeternislog.mongoHost" . }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "anchor.mongoHost" . }}
+  name: {{ include "aeternislog.mongoHost" . }}
   labels:
-    {{- include "anchor.labels" . | nindent 4 }}
+    {{- include "aeternislog.labels" . | nindent 4 }}
     app.kubernetes.io/component: mongodb
 spec:
   selector:
-    {{- include "anchor.selectorLabels" . | nindent 4 }}
+    {{- include "aeternislog.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: mongodb
   ports:
     - port: 27017

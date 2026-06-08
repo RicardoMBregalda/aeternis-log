@@ -1,11 +1,11 @@
-# Makefile for Go Log Management API
+# Makefile for AeternisLog API
 
 .PHONY: help run build test swagger clean docker docker-build docker-run lint fmt vet deps install
 
 # Variables
-APP_NAME=log-api
-BINARY_NAME=log-api
-DOCKER_IMAGE=tcc-log-api
+APP_NAME=aeternislog-api
+BINARY_NAME=aeternislog-api
+DOCKER_IMAGE=aeternislog-api
 DOCKER_TAG=latest
 GO_FILES=$(shell find . -name '*.go' -type f -not -path "./vendor/*")
 MAIN_PATH=./cmd/api
@@ -111,7 +111,7 @@ docker-run: ## Run Docker container
 		-p 5001:5001 \
 		-p 9090:9090 \
 		-v $(PWD)/config.yaml:/app/config.yaml \
-		-v /var/log/tcc-wal:/var/log/tcc-wal \
+		-v /var/log/aeternislog-wal:/var/log/aeternislog-wal \
 		--restart unless-stopped \
 		$(DOCKER_IMAGE):$(DOCKER_TAG)
 	@echo "Container running on http://localhost:5001"

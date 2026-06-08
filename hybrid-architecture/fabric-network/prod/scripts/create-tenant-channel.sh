@@ -11,7 +11,7 @@
 set -euo pipefail
 
 CHANNEL="${1:?usage: create-tenant-channel.sh <channel-id>}"
-FN_DIR="/root/tcc-log-management/hybrid-architecture/fabric-network"
+FN_DIR="/root/aeternis-log/hybrid-architecture/fabric-network"
 PROD="$FN_DIR/prod"
 BLOCK="$PROD/channel-artifacts/${CHANNEL}.block"
 

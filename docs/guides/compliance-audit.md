@@ -16,7 +16,7 @@ operator.
 | Requirement | How the platform satisfies it |
 |---|---|
 | Integrity of audit logs | SHA-256 per record + Merkle root anchored on-chain; tamper is mathematically detectable |
-| Independent verifiability | Recompute hashes/roots locally (Go/Python SDK, `anchor` CLI) — trustless |
+| Independent verifiability | Recompute hashes/roots locally (Go/Python SDK, `aeternislog` CLI) — trustless |
 | Immutability of the trail | Soft delete preserves the record and its anchor; the proof never disappears |
 | Tenant data isolation | Records scoped per tenant; optionally a dedicated Fabric channel per tenant (ledger-level) |
 | Auditability over time | Each batch keeps its tx id; the chain of anchors is append-only |
@@ -28,8 +28,8 @@ Send one record per event into a domain (e.g. `access-logs`, `transactions`,
 `consent`). The payload is free-form JSON.
 
 ```python
-from anchor import Client
-c = Client("https://anchor.example.com", api_key="acme-key")
+from aeternislog import Client
+c = Client("https://aeternislog.example.com", api_key="acme-key")
 
 c.create_record(
     "access-logs",
@@ -66,7 +66,7 @@ Fully offline check (trustless) — the auditor exports the records to a CSV and
 the anchored root from the ledger, then:
 
 ```bash
-anchor verify --file access-logs-2026-06.csv --expected-root <on-chain root>
+aeternislog verify --file access-logs-2026-06.csv --expected-root <on-chain root>
 # exit 0 = VALID, exit 2 = CORRUPTED
 ```
 

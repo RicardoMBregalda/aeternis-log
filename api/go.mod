@@ -1,4 +1,4 @@
-module github.com/RicardoMBregalda/tcc-log-management/go-api
+module github.com/RicardoMBregalda/aeternis-log/go-api
 
 go 1.25.0
 

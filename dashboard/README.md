@@ -1,4 +1,4 @@
-# Anchor — Integrity Dashboard
+# AeternisLog — Integrity Dashboard
 
 A minimal, dependency-free web dashboard for the Tamper-Evident Data Anchoring API:
 

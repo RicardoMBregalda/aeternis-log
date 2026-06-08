@@ -3,7 +3,7 @@
 // Besides wrapping the HTTP API (with automatic retries), it recomputes record
 // hashes and Merkle roots locally and independently of the server, so an auditor
 // can verify integrity without trusting the API.
-package anchor
+package aeternislog
 
 import (
 	"crypto/sha256"
