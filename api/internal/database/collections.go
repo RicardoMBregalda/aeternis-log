@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"

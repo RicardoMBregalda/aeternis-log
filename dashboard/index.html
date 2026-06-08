@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Anchor — Integrity Dashboard</title>
+  <title>AeternisLog — Integrity Dashboard</title>
   <style>
     :root { --bg:#0f172a; --panel:#1e293b; --line:#334155; --fg:#e2e8f0; --muted:#94a3b8;
             --accent:#38bdf8; --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
@@ -44,7 +44,7 @@
 <body>
   <header>
     <span id="status-dot" class="dot"></span>
-    <h1>Anchor — Tamper-Evident Integrity Dashboard</h1>
+    <h1>AeternisLog — Tamper-Evident Integrity Dashboard</h1>
     <span id="status-text" class="muted" style="margin-left:auto"></span>
   </header>
 
@@ -90,13 +90,13 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const store = {
-      get base()   { return localStorage.getItem("anchor.base")   || "http://localhost:5001"; },
-      get key()    { return localStorage.getItem("anchor.key")    || ""; },
-      get domain() { return localStorage.getItem("anchor.domain") || "audit"; },
+      get base()   { return localStorage.getItem("aeternislog.base")   || "http://localhost:5001"; },
+      get key()    { return localStorage.getItem("aeternislog.key")    || ""; },
+      get domain() { return localStorage.getItem("aeternislog.domain") || "audit"; },
       save(b, k, d) {
-        localStorage.setItem("anchor.base", b);
-        localStorage.setItem("anchor.key", k);
-        localStorage.setItem("anchor.domain", d);
+        localStorage.setItem("aeternislog.base", b);
+        localStorage.setItem("aeternislog.key", k);
+        localStorage.setItem("aeternislog.domain", d);
       },
     };
 

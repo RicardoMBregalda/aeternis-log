@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "anchor.fullname" . }}
+  name: {{ include "aeternislog.fullname" . }}
   labels:
-    {{- include "anchor.labels" . | nindent 4 }}
+    {{- include "aeternislog.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "anchor.selectorLabels" . | nindent 6 }}
+      {{- include "aeternislog.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
   template:
     metadata:
       labels:
-        {{- include "anchor.selectorLabels" . | nindent 8 }}
+        {{- include "aeternislog.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
@@ -66,14 +66,14 @@ spec:
               mountPath: /fabric-identity
               readOnly: true
             - name: wal
-              mountPath: /var/log/tcc-wal
+              mountPath: /var/log/aeternislog-wal
       volumes:
         - name: config
           configMap:
-            name: {{ include "anchor.fullname" . }}-config
+            name: {{ include "aeternislog.fullname" . }}-config
         - name: fabric-identity
           secret:
-            secretName: {{ include "anchor.identitySecret" . }}
+            secretName: {{ include "aeternislog.identitySecret" . }}
             defaultMode: 0440
             items:
               - key: tls-ca.pem

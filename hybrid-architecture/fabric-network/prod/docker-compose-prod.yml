@@ -1,10 +1,10 @@
 # Production-staging Fabric network: Raft of 3 orderers (channel participation, no
 # system channel) + 3 peer orgs (one peer each) with CouchDB, plus a CLI.
-# Isolated from dev: network tcc_log_network_prod, distinct host ports, CA-issued crypto.
+# Isolated from dev: network aeternislog_network_prod, distinct host ports, CA-issued crypto.
 
 networks:
   prod-net:
-    name: tcc_log_network_prod
+    name: aeternislog_network_prod
     external: true
 
 volumes:
@@ -202,7 +202,7 @@ services:
       - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
       - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=password
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=tcc_log_network_prod
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=aeternislog_network_prod
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
     working_dir: /etc/hyperledger/fabric
     command: peer node start
@@ -246,7 +246,7 @@ services:
       - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
       - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=password
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=tcc_log_network_prod
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=aeternislog_network_prod
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
     working_dir: /etc/hyperledger/fabric
     command: peer node start
@@ -290,7 +290,7 @@ services:
       - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
       - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=password
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=tcc_log_network_prod
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=aeternislog_network_prod
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
     working_dir: /etc/hyperledger/fabric
     command: peer node start

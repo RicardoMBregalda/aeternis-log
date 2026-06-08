@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for Go Log Management API
+# Multi-stage Dockerfile for AeternisLog API
 
 # Stage 1: Build
 # Go 1.25 is required by the Fabric Gateway client (github.com/hyperledger/fabric-gateway v1.11).
@@ -23,7 +23,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s -X main.Version=$(git describe --tags --always --dirty) -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -a -installsuffix cgo \
-    -o /build/log-api \
+    -o /build/aeternislog-api \
     ./cmd/api
 
 # Stage 2: Runtime
@@ -40,14 +40,14 @@ RUN addgroup -g 1000 appuser && \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/log-api /app/log-api
+COPY --from=builder /build/aeternislog-api /app/aeternislog-api
 
 # Copy configuration file
 COPY config.yaml /app/config.yaml
 
 # Create WAL directory
-RUN mkdir -p /var/log/tcc-wal && \
-    chown -R appuser:appuser /var/log/tcc-wal
+RUN mkdir -p /var/log/aeternislog-wal && \
+    chown -R appuser:appuser /var/log/aeternislog-wal
 
 # Change ownership
 RUN chown -R appuser:appuser /app
@@ -63,4 +63,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5001/health || exit 1
 
 # Run the application
-ENTRYPOINT ["/app/log-api"]
+ENTRYPOINT ["/app/aeternislog-api"]

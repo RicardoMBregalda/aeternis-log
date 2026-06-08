@@ -1,14 +1,14 @@
-"""``anchor`` command-line tool.
+"""``aeternislog`` command-line tool.
 
 Offline integrity verification for auditors: given a CSV export of records,
 recompute the Merkle root locally and compare it with the root anchored on the
 blockchain — without trusting the API to do the recomputation.
 
-    anchor merkle  --file records.csv
-    anchor verify  --file records.csv --expected-root <on-chain root>
-    anchor verify  --file records.csv --api http://host:5001 --domain audit \\
-                   --batch-id audit-... [--key <api-key>]
-    anchor hash    --id ID --timestamp TS --source SRC --payload '{"k":"v"}'
+    aeternislog merkle  --file records.csv
+    aeternislog verify  --file records.csv --expected-root <on-chain root>
+    aeternislog verify  --file records.csv --api http://host:5001 --domain audit \\
+                        --batch-id audit-... [--key <api-key>]
+    aeternislog hash    --id ID --timestamp TS --source SRC --payload '{"k":"v"}'
 
 CSV columns: id, timestamp, source, payload (a JSON object string); optional
 hash_fields (JSON array or comma-separated). Row order must match the anchored
@@ -23,7 +23,7 @@ import sys
 from typing import List, Optional, Sequence
 
 from .client import Client
-from .errors import AnchorError
+from .errors import AeternisLogError
 from .record import Record, merkle_root
 
 
@@ -92,7 +92,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         client = Client(args.api, api_key=args.key)
         try:
             expected = client.verify_batch(args.domain, args.batch_id).original_merkle_root
-        except AnchorError as e:
+        except AeternisLogError as e:
             raise SystemExit(f"error: could not fetch anchored root: {e}")
     if not expected:
         raise SystemExit("error: provide --expected-root, or --api/--domain/--batch-id")
@@ -106,7 +106,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="anchor", description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(prog="aeternislog", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_merkle = sub.add_parser("merkle", help="compute the Merkle root of a CSV (offline)")

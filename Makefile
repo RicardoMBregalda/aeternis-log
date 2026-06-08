@@ -1,12 +1,12 @@
 # ============================================================================
-# tcc-log-management — orchestration
+# aeternis-log — orchestration
 # Brings up the blockchain (Hyperledger Fabric) and the API (Go + MongoDB + Redis) together.
 # The Fabric network and the API share the Docker network $(NETWORK).
 # ============================================================================
 
 SHELL := /bin/bash
 
-NETWORK    ?= tcc_log_network
+NETWORK    ?= aeternislog_network
 FABRIC_DIR := hybrid-architecture/fabric-network
 API_DIR    := api
 
@@ -96,7 +96,7 @@ vet: ## Run go vet on the API
 .PHONY: smoke
 smoke: ## Run the black-box end-to-end test against the running dev API (no auth)
 	@KEY= KEY2= EXPECT_CHANNEL=logchannel BASE=http://localhost:5001 \
-		METRICS=http://localhost:9090/metrics MONGO=tcc-mongodb \
+		METRICS=http://localhost:9090/metrics MONGO=aeternislog-mongodb \
 		bash $(API_DIR)/scripts/e2e-test.sh
 
 # ----------------------------------------------------------------------------

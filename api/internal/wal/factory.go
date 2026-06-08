@@ -3,7 +3,7 @@ package wal
 import (
 	"fmt"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 	"github.com/go-redis/redis/v8"
 )
 

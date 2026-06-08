@@ -67,7 +67,7 @@ fabric:
 wal:
   enabled: true
   backend: "file"
-  directory: "/var/log/tcc-wal"
+  directory: "/var/log/aeternislog-wal"
   check_interval: 5s
   max_file_size_mb: 100
   rotation_enabled: true

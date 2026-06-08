@@ -24,7 +24,7 @@ type Config struct {
 	Format       string // json or console
 	Output       string // stdout, stderr or a file path
 	EnableCaller bool
-	ServiceName  string // value for the "service" field; defaults to "log-api"
+	ServiceName  string // value for the "service" field; defaults to "aeternislog-api"
 }
 
 // global is the configured logger. It defaults to a sane stderr logger so that
@@ -64,7 +64,7 @@ func Init(cfg Config) (zerolog.Logger, io.Closer, error) {
 
 	service := cfg.ServiceName
 	if service == "" {
-		service = "log-api"
+		service = "aeternislog-api"
 	}
 
 	builder := zerolog.New(writer).With().Timestamp().Str("service", service)

@@ -1,4 +1,4 @@
-# Roadmap: Do TCC ao Produto
+# Roadmap — AeternisLog
 
 ## Painel de Progresso
 
@@ -28,7 +28,7 @@
 
 ### O que foi construído
 
-O TCC implementa um padrão de **armazenamento com ancora criptográfica em blockchain**: dados vão para MongoDB (rápido, consultável), são agrupados em Merkle Trees, e a raiz de cada batch é gravada no Hyperledger Fabric (imutável, auditável). Um WAL com `fsync` garante zero perda de dados antes de qualquer processamento.
+O AeternisLog implementa um padrão de **armazenamento com ancora criptográfica em blockchain**: dados vão para MongoDB (rápido, consultável), são agrupados em Merkle Trees, e a raiz de cada batch é gravada no Hyperledger Fabric (imutável, auditável). Um WAL com `fsync` garante zero perda de dados antes de qualquer processamento.
 
 Esse padrão — chamado de *Tamper-Evident Data Anchoring* — não é específico para logs. Ele se aplica a qualquer cenário onde a pergunta central é: **"esse dado pode ter sido alterado depois de gravado?"**
 
@@ -110,16 +110,16 @@ Sensores industriais, equipamentos médicos — dados que precisam ser auditáve
 - [x] **`CalculateHash` configurável** — hash SHA-256 sobre `id|timestamp|source|payload canônico`; `hash_fields` opcional escolhe quais chaves do payload entram no hash (guardado no record p/ reprodutibilidade); payload canônico com chaves ordenadas (independe da ordem). _(ver changelog)_
 - [x] **Rotas `/api/v1/{domain}/records`** — CRUD genérico (create/list+cursor/get/delete soft) sob namespace de domínio, protegido pela auth. **Aditivo:** `/logs` mantido (não renomeado) para não quebrar o fluxo validado. _(ver changelog)_
 - [x] **Multi-tenancy** — o tenant é resolvido pela API key (`auth.tenants: [{id, keys}]`; `api_keys` planas → `default`) e posto no contexto; records isolados por `(tenant, domain)` em todas as operações + ancoragem (batch ID namespaced por tenant). _(ver changelog)_ Isolamento de storage por **campo `tenant`** + (Fase H) **canal Fabric por tenant** opcional (`fabric.tenant_channels`) elevando o isolamento ao **nível de ledger** — ver changelog 2026-06-06 (Fase H).
-- [x] **Rede Fabric de produção (staging multi-org, 1 host)** — **3 peer orgs** (`Org1/2/3MSP`, peer + CouchDB cada), **Raft de 3 orderers** via **channel participation** (sem system-channel), **CAs separadas** (Fabric CA por org + CA do orderer, sem `cryptogen`) e política de endosso **`MAJORITY` 2/3**. Stack paralela e isolada da dev (`docker-compose-prod.yml`, rede `tcc_log_network_prod`, portas próprias, crypto em `organizations/`). `logchaincode` commitado (seq 1) e ancoragem cross-org validada — incl. **tolerância a falhas** (1 orderer down e 1 org down → ancora; 2 orgs down → rejeita). Artefatos em `hybrid-architecture/fabric-network/prod/` (`configtx.yaml`, composes, `scripts/`). _(ver changelog)_ ✅ **Plano de produção concluído no staging (Fases A–H):** F (API ancora contra a rede prod com endosso 2/3 via discovery), H (**canal Fabric por tenant** = isolamento no nível de ledger) e G (**hardening**: API non-root + identidade de menor privilégio, limites de recurso, backup/DR). O que resta é **infra real multi-host** (HSM/DNS/offsite), documentado no [runbook de operação/DR](docs/runbook-operacao-prod.md). Ver [docs/plano-rede-fabric-producao.md](docs/plano-rede-fabric-producao.md).
+- [x] **Rede Fabric de produção (staging multi-org, 1 host)** — **3 peer orgs** (`Org1/2/3MSP`, peer + CouchDB cada), **Raft de 3 orderers** via **channel participation** (sem system-channel), **CAs separadas** (Fabric CA por org + CA do orderer, sem `cryptogen`) e política de endosso **`MAJORITY` 2/3**. Stack paralela e isolada da dev (`docker-compose-prod.yml`, rede `aeternislog_network_prod`, portas próprias, crypto em `organizations/`). `logchaincode` commitado (seq 1) e ancoragem cross-org validada — incl. **tolerância a falhas** (1 orderer down e 1 org down → ancora; 2 orgs down → rejeita). Artefatos em `hybrid-architecture/fabric-network/prod/` (`configtx.yaml`, composes, `scripts/`). _(ver changelog)_ ✅ **Plano de produção concluído no staging (Fases A–H):** F (API ancora contra a rede prod com endosso 2/3 via discovery), H (**canal Fabric por tenant** = isolamento no nível de ledger) e G (**hardening**: API non-root + identidade de menor privilégio, limites de recurso, backup/DR). O que resta é **infra real multi-host** (HSM/DNS/offsite), documentado no [runbook de operação/DR](docs/runbook-operacao-prod.md). Ver [docs/plano-rede-fabric-producao.md](docs/plano-rede-fabric-producao.md).
 - [x] **Webhook/callback ao ancorar** — pacote `internal/webhook`: ao ancorar um batch (logs ou records), dispara `POST` do evento `batch.anchored` (domain, batch_id, merkle_root, num_records, tx_id, anchored_at) para `webhook.url`, assinado com HMAC-SHA256 (`X-Webhook-Signature`) quando há `secret`; entrega assíncrona com retries. Opt-in via `webhook.enabled`. _(ver changelog)_
-- [x] **SDK cliente em Go** — módulo `sdk/go` (pacote `anchor`, só stdlib): `Client` com retry automático (network/5xx) + métodos CRUD/batch/verify; **verificação de integridade local** (`ComputeHash`/`MerkleRoot`/`VerifyRecordsLocally`) que recalcula independente do servidor (no create, checa que o hash do servidor == hash local). _(ver changelog)_
+- [x] **SDK cliente em Go** — módulo `sdk/go` (pacote `aeternislog`, só stdlib): `Client` com retry automático (network/5xx) + métodos CRUD/batch/verify; **verificação de integridade local** (`ComputeHash`/`MerkleRoot`/`VerifyRecordsLocally`) que recalcula independente do servidor (no create, checa que o hash do servidor == hash local). _(ver changelog)_
 
 ### Fase 3 — Experiência do Desenvolvedor (2-3 meses) — `6 ✅ de 6`
 
 **Objetivo:** Reduzir o tempo de integração de semanas para horas.
 
-- [x] **SDK em Python** — pacote `anchor` (`sdk/python`, só stdlib): `Client` (urllib, retries, create/get/list/batch/verify) + verificação local trustless (`compute_hash`/`merkle_root`/`verify_records_locally`) com JSON canônico **byte-a-byte igual ao Go**. 24 testes unitários + integração ao vivo (server hash == local). _(ver changelog)_
-- [x] **CLI para verificação offline** — comando `anchor` (no pacote Python): recalcula o Merkle root de um CSV e compara com o root ancorado (offline com `--expected-root`, ou buscando via API por `--batch-id`); exit 0 VALID / 2 CORRUPTED. _(ver changelog)_
+- [x] **SDK em Python** — pacote `aeternislog` (`sdk/python`, só stdlib): `Client` (urllib, retries, create/get/list/batch/verify) + verificação local trustless (`compute_hash`/`merkle_root`/`verify_records_locally`) com JSON canônico **byte-a-byte igual ao Go**. 24 testes unitários + integração ao vivo (server hash == local). _(ver changelog)_
+- [x] **CLI para verificação offline** — comando `aeternislog` (no pacote Python): recalcula o Merkle root de um CSV e compara com o root ancorado (offline com `--expected-root`, ou buscando via API por `--batch-id`); exit 0 VALID / 2 CORRUPTED. _(ver changelog)_
 - [x] **Dashboard web mínimo** — `dashboard/index.html` (vanilla JS, sem build): health, status de sync, lista de batches com verify de integridade e verify de batch de records. Validado ao vivo. _(ver changelog)_
 - [x] **Helm chart** — `deploy/helm/anchor` (API + MongoDB + Redis); Fabric externo, identidade via Secret (API non-root, chave isolada). `helm lint`/`template` limpos. _(ver changelog)_ _Nota:_ peer Fabric não vai como sidecar — a rede é externa e o gateway disca nela (decisão de arquitetura).
 - [x] **Guias por vertical** — `docs/guides/compliance-audit.md` (LGPD/GDPR/SOX/HIPAA) e `docs/guides/supply-chain.md`, em inglês, com exemplos de SDK/CLI. _(ver changelog)_
@@ -193,7 +193,7 @@ Fecha o roadmap de produto. Código novo em inglês, sem dependências além de
 - **Runbook de DR** já entregue na Fase G.
 - `go build`/`vet`/`test ./...` limpos (testes de DB pulam pois o Mongo local caiu).
   ⚠️ **Validação E2E ao vivo do endpoint público e do relatório ficou pendente:** um
-  restart de ambiente (Docker/WSL) derrubou os stacks `tcc-*`/`.prod` no meio da sessão
+  restart de ambiente (Docker/WSL) derrubou os stacks `aeternislog-*`/`.prod` no meio da sessão
   (dados preservados nos volumes; restaurar com `make up`). As partes puras estão cobertas
   por testes unitários.
 
@@ -202,13 +202,13 @@ Fecha o roadmap de produto. Código novo em inglês, sem dependências além de
 Empacota o produto para integração rápida (foco do vertical de Compliance). Tudo em
 **inglês** (alcance/comercialização). Concluída.
 
-- **SDK Python** (`sdk/python`, pacote `anchor`, **só stdlib**): `Client` (urllib, retries
+- **SDK Python** (`sdk/python`, pacote `aeternislog`, **só stdlib**): `Client` (urllib, retries
   network/5xx, 409-como-resultado no verify, checagem trustless de hash no create) +
   verificação local (`compute_hash`/`merkle_root`/`verify_records_locally`). O JSON canônico
   replica o `encoding/json` do Go **byte-a-byte** (chaves ordenadas, compacto, escapes
   HTML), provado pela integração ao vivo (server hash == local). 24 testes unit + 1 live.
-  `pyproject.toml` (entry point `anchor`); packaging validado (`pip install` + console script).
-- **CLI de auditoria offline** (`anchor`, no pacote): `merkle`/`verify`/`hash`. `verify`
+  `pyproject.toml` (entry point `aeternislog`); packaging validado (`pip install` + console script).
+- **CLI de auditoria offline** (`aeternislog`, no pacote): `merkle`/`verify`/`hash`. `verify`
   recalcula o root de um CSV e compara com o ancorado (offline `--expected-root` ou via API
   por `--batch-id`); exit 0 VALID / 2 CORRUPTED. Demo ao vivo: VALID + tamper→CORRUPTED.
 - **Dashboard web** (`dashboard/index.html`, vanilla JS, sem build): health, sync status,
@@ -321,7 +321,7 @@ produção real).
   de `logchaincode` (anchor peers vieram no genesis), então `proposal.Endorse()` junta os
   endossos sozinho — o cliente não nomeia peers. Confirmado com o `discover` CLI.
 - **Stack de API paralela** `api/docker-compose.prod.yml` (`go-api-prod` + `mongodb-prod` +
-  `redis-prod`) na rede `tcc_log_network_prod`, portas deslocadas (5002/9091). Fabric
+  `redis-prod`) na rede `aeternislog_network_prod`, portas deslocadas (5002/9091). Fabric
   configurado 100% por env `FABRIC_*` (transport gateway, channel `logchannel`, MSP
   `Org1MSP`, endpoint/cert/identidade do crypto prod). A **API dev (:5001) ficou intacta**.
 - **Bug de runtime:** o crypto emitido pela CA é root com dirs `0700` / chave `0600`; o
@@ -347,8 +347,8 @@ dentro do MVP** (Fase H, pós-F).
 
 - **Topologia (stack paralela e isolada da dev):** `docker-compose-ca.yml` (4 CAs:
   `ca.org1/2/3` + `ca.orderer`) + `docker-compose-prod.yml` (Raft de **3 orderers**, **3
-  peer orgs** com CouchDB, CLI). Rede `tcc_log_network_prod`, portas deslocadas, crypto
-  em `prod/organizations/`. A rede de dev (`tcc_log_network`, `make up`) **continua no ar
+  peer orgs** com CouchDB, CLI). Rede `aeternislog_network_prod`, portas deslocadas, crypto
+  em `prod/organizations/`. A rede de dev (`aeternislog_network`, `make up`) **continua no ar
   validando em paralelo** — nada foi mutado.
 - **Identidades reais via Fabric CA** (`scripts/registerEnroll.sh`): admin/peer/user por
   org, 3 orderers + admin do orderer org, MSP + TLS com NodeOUs. Domínio por org.
@@ -383,11 +383,11 @@ Cada cliente (tenant) é resolvido pela API key e só enxerga os próprios recor
 - Testes: `database.TestRecordsCRUD` (isolamento tenant + domain), `middleware.TestAPIKeyAuth`/`TestMatchAPIKey` (resolução de tenant). **E2E ao vivo (2 tenants):** globex lendo record do acme → 404; cada um lista só os próprios records no mesmo domínio. `go build`/`vet`/`test ./...` limpos.
 - ⚠️ **Escopo:** isolamento de storage por campo `tenant` (não collection-por-tenant) e **mesmo channel** Fabric. O channel-por-org depende da rede Fabric de produção (3 orgs) — único item restante da Fase 2.
 
-### 2026-06-05 — Fase 2: SDK cliente Go (`anchor`) com verificação local
+### 2026-06-05 — Fase 2: SDK cliente Go (`aeternislog`) com verificação local
 
 Entrega o "SDK embarcável" do vertical de Compliance.
 
-- Novo módulo `sdk/go` (pacote `anchor`, **só stdlib**, sem dependências) — `github.com/RicardoMBregalda/tcc-log-management/sdk/go`.
+- Novo módulo `sdk/go` (pacote `aeternislog`, **só stdlib**, sem dependências) — `github.com/RicardoMBregalda/aeternis-log/sdk/go`.
 - `Client` (`New` + `WithAPIKey`/`WithHTTPClient`/`WithMaxRetries`): `CreateRecord`, `GetRecord`, `BatchRecords`, `VerifyBatch`. **Retry automático** em erros de rede/5xx com backoff; 4xx vira `*APIError` sem retry; 409 do verify volta como resultado (IsValid=false).
 - **Verificação de integridade local (trustless):** `(*Record).ComputeHash()` e `MerkleRoot`/`VerifyRecordsLocally` recalculam independentemente do servidor (mesmo algoritmo: `SHA-256(id|timestamp|source|payload canônico)`, payload canônico com chaves ordenadas). No `CreateRecord`, o id/timestamp são gerados no cliente e o hash do servidor é checado contra o hash local.
 - Testes: unit (hash/merkle/tamper, retry 5xx, no-retry 4xx, mismatch de hash) + integração ao vivo (`-tags integration`): SDK criou record (hash do servidor == local), ancorou no Fabric (tx real) e `VerifyBatch` deu VALID. README em `sdk/go`. Build/test limpos.
@@ -438,9 +438,9 @@ Teste ponta a ponta pela API em container (gateway default) antes da Fase 2. O f
 Com o E2E validado, o `gateway` vira o transporte padrão; `docker-exec` fica como fallback.
 
 - `config`: default `fabric.transport: gateway` + caminhos de cert/identidade default apontando para o mount do docker-compose (`/fabric-crypto/...`). `config.yaml`, `.env.example` e README atualizados.
-- `docker-compose`: `docker.sock` desmontado (comentado) — não é mais necessário no caminho default; o mount `crypto-config:/fabric-crypto:ro` sustenta o gateway. A API e os peers já compartilham a rede `tcc_log_network`, então o container resolve `peer0.org1.example.com:7051`.
+- `docker-compose`: `docker.sock` desmontado (comentado) — não é mais necessário no caminho default; o mount `crypto-config:/fabric-crypto:ro` sustenta o gateway. A API e os peers já compartilham a rede `aeternislog_network`, então o container resolve `peer0.org1.example.com:7051`.
 - Validação: a API sobe com `transport=gateway` (log "Fabric client initialized") e `/health` reporta `fabric: healthy` (backend gateway construído: identidade + TLS carregados, gRPC client criado). Somado ao `TestGatewayE2E`, cobre construção + boot + transação real.
-- _Nota de operação:_ para rodar **nativo** (fora do compose), use `FABRIC_TRANSPORT=docker-exec` ou sobrescreva os paths do gateway (os defaults são do container). O container `tcc-go-api` em execução ainda usa a imagem antiga — aplica-se com um rebuild (`make api`).
+- _Nota de operação:_ para rodar **nativo** (fora do compose), use `FABRIC_TRANSPORT=docker-exec` ou sobrescreva os paths do gateway (os defaults são do container). O container `aeternislog-api` em execução ainda usa a imagem antiga — aplica-se com um rebuild (`make api`).
 
 ### 2026-06-04 — Fabric: upgrade para as versões mais recentes
 
@@ -542,7 +542,7 @@ Segunda leva (Fase 1). Item escolhido: **WAL distribuído**, para destravar múl
 - **Durabilidade:** no modo `redis` depende da persistência do Redis. `docker-compose` do Redis ajustado para `--appendonly yes --appendfsync always` (paridade com o `fsync` do arquivo). Documentado em `config.yaml`/`.env.example`/README.
 - Testes: factory (sempre roda) + e2e e retry-on-failure (validados contra Redis real). Removido código morto `NewWriteAheadLogWithConfig`.
 
-**Internacionalização & saída formal (do TCC ao produto)**
+**Internacionalização & saída formal (do protótipo ao produto)**
 - Código, comentários do chaincode, scripts do Fabric, README e os dois Makefiles traduzidos para inglês (ROADMAP e changelog permanecem em PT como docs internas).
 - Saídas de console (scripts + Makefiles + banner de boot) formalizadas: emojis removidos, prefixos `[INFO]`/`[OK]`/`[WARNING]`/`[ERROR]`.
 

@@ -1,9 +1,9 @@
-# Default values for the anchor chart.
+# Default values for the aeternislog chart.
 
 replicaCount: 1
 
 image:
-  repository: tcc-go-api
+  repository: aeternislog-api
   tag: latest
   pullPolicy: IfNotPresent
 
@@ -99,7 +99,7 @@ ingress:
   enabled: false
   className: ""
   annotations: {}
-  host: anchor.example.com
+  host: aeternislog.example.com
   tls: []
 
 # Prometheus scrape annotations on the API pod.

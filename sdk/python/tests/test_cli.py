@@ -4,8 +4,8 @@ import os
 import tempfile
 import unittest
 
-from anchor import cli
-from anchor.record import Record, merkle_root
+from aeternislog import cli
+from aeternislog.record import Record, merkle_root
 
 
 def _write_csv(rows):

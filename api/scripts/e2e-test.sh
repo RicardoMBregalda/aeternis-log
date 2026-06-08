@@ -9,7 +9,7 @@
 #   KEY           API key for tenant 1         (default staging-default-key; "" = no auth)
 #   EXPECT_CHANNEL  channel tenant 1 anchors to (default logchannel)
 #   KEY2          API key for tenant 2         (default staging-acme-key; "" = skip isolation)
-#   MONGO         mongo container for tamper    (default tcc-mongodb-prod; "" = skip tamper)
+#   MONGO         mongo container for tamper    (default aeternislog-mongodb-prod; "" = skip tamper)
 #
 #   bash e2e-test.sh
 set -uo pipefail
@@ -19,7 +19,7 @@ METRICS="${METRICS:-http://localhost:9091/metrics}"
 KEY="${KEY-staging-default-key}"
 EXPECT_CHANNEL="${EXPECT_CHANNEL:-logchannel}"
 KEY2="${KEY2-staging-acme-key}"
-MONGO="${MONGO-tcc-mongodb-prod}"
+MONGO="${MONGO-aeternislog-mongodb-prod}"
 
 BODY=$(mktemp)
 PASS=0; FAIL=0

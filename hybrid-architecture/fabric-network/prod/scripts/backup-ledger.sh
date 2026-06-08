@@ -17,7 +17,7 @@
 #     sh -c 'rm -rf /var/hyperledger/production/* && tar xzf /backup/<node>.tar.gz -C /var/hyperledger/production'
 set -euo pipefail
 
-PROD="/root/tcc-log-management/hybrid-architecture/fabric-network/prod"
+PROD="/root/aeternis-log/hybrid-architecture/fabric-network/prod"
 TS="$(date +%Y%m%d-%H%M%S)"
 BACKUP="$PROD/backups/$TS"
 mkdir -p "$BACKUP"

@@ -3,14 +3,14 @@
     {
       "name": "DS_PROMETHEUS",
       "label": "Prometheus",
-      "description": "Prometheus data source scraping the Anchor API",
+      "description": "Prometheus data source scraping the AeternisLog API",
       "type": "datasource",
       "pluginId": "prometheus",
       "pluginName": "Prometheus"
     }
   ],
-  "title": "Anchor — API & Anchoring",
-  "uid": "anchor-overview",
+  "title": "AeternisLog — API & Anchoring",
+  "uid": "aeternislog-overview",
   "schemaVersion": 38,
   "version": 1,
   "editable": true,
@@ -82,7 +82,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
       "targets": [
-        { "expr": "process_resident_memory_bytes{job=\"anchor-api\"}", "legendFormat": "rss", "refId": "A" }
+        { "expr": "process_resident_memory_bytes{job=\"aeternislog-api\"}", "legendFormat": "rss", "refId": "A" }
       ]
     },
     {
@@ -93,7 +93,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "expr": "go_goroutines{job=\"anchor-api\"}", "legendFormat": "goroutines", "refId": "A" }
+        { "expr": "go_goroutines{job=\"aeternislog-api\"}", "legendFormat": "goroutines", "refId": "A" }
       ]
     }
   ]

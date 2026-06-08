@@ -5,9 +5,9 @@ bin/
 *.dll
 *.so
 *.dylib
-log-api
-log-api-linux
-log-api-windows
+aeternislog-api
+aeternislog-api-linux
+aeternislog-api-windows
 
 # Test binary, built with `go test -c`
 *.test
@@ -50,7 +50,7 @@ docs/swagger.yaml
 logs/
 
 # WAL files (development)
-/var/log/tcc-wal/
+/var/log/aeternislog-wal/
 
 # Temporary files
 tmp/

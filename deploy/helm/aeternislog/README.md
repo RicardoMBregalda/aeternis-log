@@ -1,4 +1,4 @@
-# anchor Helm chart
+# aeternislog Helm chart
 
 Deploys the Tamper-Evident Data Anchoring API with MongoDB and Redis on Kubernetes.
 The Hyperledger Fabric network is **external** to the cluster — the API's gRPC gateway
@@ -12,8 +12,8 @@ matching the production hardening in [docs/runbook-operacao-prod.md](../../../do
 ## Install
 
 ```bash
-helm install anchor deploy/helm/anchor \
-  --set image.repository=ghcr.io/you/anchor-api --set image.tag=1.0 \
+helm install aeternislog deploy/helm/aeternislog \
+  --set image.repository=ghcr.io/you/aeternislog-api --set image.tag=1.0 \
   --set-file fabric.identity.tlsCaCert=peer-tls-ca.pem \
   --set-file fabric.identity.signCert=user-cert.pem \
   --set-file fabric.identity.signKey=user-key.pem \
@@ -24,7 +24,7 @@ helm install anchor deploy/helm/anchor \
 For production, manage the identity with an external secret store and reference it:
 
 ```bash
-helm install anchor deploy/helm/anchor --set fabric.identity.existingSecret=anchor-fabric-identity
+helm install aeternislog deploy/helm/aeternislog --set fabric.identity.existingSecret=aeternislog-fabric-identity
 ```
 
 The referenced Secret must have keys `tls-ca.pem`, `sign-cert.pem`, `sign-key.pem`.
@@ -33,7 +33,7 @@ The referenced Secret must have keys `tls-ca.pem`, `sign-cert.pem`, `sign-key.pe
 
 | Key | Default | Notes |
 |---|---|---|
-| `image.repository` / `image.tag` | `tcc-go-api` / `latest` | API image |
+| `image.repository` / `image.tag` | `aeternislog-api` / `latest` | API image |
 | `replicaCount` | `1` | with `wal.backend=redis` you can scale out |
 | `auth.enabled`, `auth.apiKeys`, `auth.tenants` | off | per-tenant API keys |
 | `fabric.channel` / `fabric.chaincode` | `logchannel` / `logchaincode` | |
@@ -47,6 +47,6 @@ The referenced Secret must have keys `tls-ca.pem`, `sign-cert.pem`, `sign-key.pe
 ## Validate
 
 ```bash
-helm lint deploy/helm/anchor
-helm template anchor deploy/helm/anchor -f my-values.yaml
+helm lint deploy/helm/aeternislog
+helm template aeternislog deploy/helm/aeternislog -f my-values.yaml
 ```

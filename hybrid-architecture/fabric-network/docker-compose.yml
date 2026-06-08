@@ -1,6 +1,6 @@
 networks:
   log-net:
-    name: tcc_log_network
+    name: aeternislog_network
     external: true
 
 services:
@@ -92,7 +92,7 @@ services:
       - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
       - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=password
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=tcc_log_network
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=aeternislog_network
       - CORE_VM_DOCKER_HOSTCONFIG_CPUS=1.0
       - CORE_VM_DOCKER_HOSTCONFIG_MEMORY=1073741824
       - FABRIC_LOGGING_SPEC=WARNING
@@ -136,7 +136,7 @@ services:
       - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
       - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=password
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=tcc_log_network
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=aeternislog_network
       - CORE_VM_DOCKER_HOSTCONFIG_CPUS=1.0
       - CORE_VM_DOCKER_HOSTCONFIG_MEMORY=1073741824
       - FABRIC_LOGGING_SPEC=WARNING
@@ -181,7 +181,7 @@ services:
       - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
       - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=password
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=tcc_log_network
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=aeternislog_network
       - CORE_VM_DOCKER_HOSTCONFIG_CPUS=1.0
       - CORE_VM_DOCKER_HOSTCONFIG_MEMORY=1073741824
       - FABRIC_LOGGING_SPEC=WARNING

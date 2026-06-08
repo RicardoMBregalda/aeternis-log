@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 
-class AnchorError(Exception):
+class AeternisLogError(Exception):
     """Base class for all SDK errors."""
 
 
-class APIError(AnchorError):
+class APIError(AeternisLogError):
     """Raised for non-2xx responses that are not retried (4xx, or 5xx after
     retries are exhausted)."""
 
@@ -16,7 +16,7 @@ class APIError(AnchorError):
         super().__init__(f"anchor: api error {status_code}: {body}")
 
 
-class HashMismatchError(AnchorError):
+class HashMismatchError(AeternisLogError):
     """Raised when the server-returned hash does not match the hash computed
     locally — i.e. the server did not store what the client sent."""
 

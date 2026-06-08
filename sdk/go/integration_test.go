@@ -4,8 +4,8 @@
 //
 //	go test -tags integration ./... -run TestSDKLive -v
 //
-// Override the base URL with ANCHOR_BASE_URL (default http://localhost:5001).
-package anchor
+// Override the base URL with AETERNISLOG_BASE_URL (default http://localhost:5001).
+package aeternislog
 
 import (
 	"context"
@@ -15,11 +15,11 @@ import (
 )
 
 func TestSDKLive(t *testing.T) {
-	base := os.Getenv("ANCHOR_BASE_URL")
+	base := os.Getenv("AETERNISLOG_BASE_URL")
 	if base == "" {
 		base = "http://localhost:5001"
 	}
-	c := New(base, WithAPIKey(os.Getenv("ANCHOR_API_KEY")))
+	c := New(base, WithAPIKey(os.Getenv("AETERNISLOG_API_KEY")))
 	ctx := context.Background()
 	const domain = "sdktest"
 

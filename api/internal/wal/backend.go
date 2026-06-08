@@ -1,6 +1,6 @@
 package wal
 
-import "github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
+import "github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
 
 // WAL is the durability-log abstraction shared by all backends.
 //

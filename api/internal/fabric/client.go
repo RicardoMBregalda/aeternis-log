@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 )
 
 // FabricClient handles interactions with Hyperledger Fabric through a pluggable

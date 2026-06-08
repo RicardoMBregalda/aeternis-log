@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "anchor.fullname" . }}
+  name: {{ include "aeternislog.fullname" . }}
   labels:
-    {{- include "anchor.labels" . | nindent 4 }}
+    {{- include "aeternislog.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
   type: {{ .Values.api.service.type }}
   selector:
-    {{- include "anchor.selectorLabels" . | nindent 4 }}
+    {{- include "aeternislog.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: api
   ports:
     - name: http
@@ -22,9 +22,9 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "anchor.fullname" . }}
+  name: {{ include "aeternislog.fullname" . }}
   labels:
-    {{- include "anchor.labels" . | nindent 4 }}
+    {{- include "aeternislog.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -45,7 +45,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "anchor.fullname" . }}
+                name: {{ include "aeternislog.fullname" . }}
                 port:
                   number: {{ .Values.api.port }}
 {{- end }}

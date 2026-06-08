@@ -1,9 +1,9 @@
 Anchor API deployed as release "{{ .Release.Name }}".
 
-API service: {{ include "anchor.fullname" . }}:{{ .Values.api.port }} (in-cluster)
+API service: {{ include "aeternislog.fullname" . }}:{{ .Values.api.port }} (in-cluster)
 
 Port-forward and check health:
-  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "anchor.fullname" . }} {{ .Values.api.port }}:{{ .Values.api.port }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "aeternislog.fullname" . }} {{ .Values.api.port }}:{{ .Values.api.port }}
   curl http://localhost:{{ .Values.api.port }}/health
 
 {{- if not .Values.fabric.identity.existingSecret }}

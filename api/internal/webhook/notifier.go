@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/logger"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/logger"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 )
 
 // BatchAnchoredEvent is the payload POSTed to the webhook when a batch is

@@ -1,3 +1,3 @@
-module github.com/RicardoMBregalda/tcc-log-management/sdk/go
+module github.com/RicardoMBregalda/aeternis-log/sdk/go
 
 go 1.21

@@ -9,9 +9,9 @@ at `/metrics`: HTTP request rate/latency, Go/process runtime, and product counte
 ```yaml
 # prometheus.yml
 scrape_configs:
-  - job_name: anchor-api
+  - job_name: aeternislog-api
     static_configs:
-      - targets: ["anchor-api:9090"]   # host:metricsPort
+      - targets: ["aeternislog-api:9090"]   # host:metricsPort
 rule_files:
   - prometheus-alerts.yml
 ```

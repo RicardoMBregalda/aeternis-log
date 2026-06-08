@@ -9,25 +9,25 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/cache"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/database"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/fabric"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/handlers"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/logger"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/merkle"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/metrics"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/middleware"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/wal"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/webhook"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/cache"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/database"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/fabric"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/handlers"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/logger"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/merkle"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/metrics"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/middleware"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/wal"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/webhook"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
-	_ "github.com/RicardoMBregalda/tcc-log-management/go-api/docs" // swagger docs
+	_ "github.com/RicardoMBregalda/aeternis-log/go-api/docs" // swagger docs
 )
 
 // Version and build information (set via ldflags)
@@ -36,7 +36,7 @@ var (
 	BuildTime = "unknown"
 )
 
-// @title Log Management API
+// @title AeternisLog API
 // @version 1.0
 // @description High-performance log management API with WAL, Merkle Tree, and Fabric integration
 // @termsOfService http://swagger.io/terms/
@@ -287,7 +287,7 @@ func registerRoutes(
 ) {
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"name":    "Go Log Management API",
+			"name":    "AeternisLog API",
 			"version": Version,
 			"docs":    "/swagger/index.html",
 		})
@@ -380,7 +380,7 @@ func registerRoutes(
 func printBanner() {
 	banner := `
 ==============================================================
-  Log Management API
+  AeternisLog API
   Version: %-10s
   Build:   %-15s
   Tamper-evident log anchoring with Merkle Tree + WAL

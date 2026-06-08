@@ -1,7 +1,7 @@
 import hashlib
 import unittest
 
-from anchor.record import Record, canonical, merkle_root, verify_records_locally
+from aeternislog.record import Record, canonical, merkle_root, verify_records_locally
 
 
 class TestCanonical(unittest.TestCase):

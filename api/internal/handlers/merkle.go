@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/cache"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/merkle"
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/cache"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/merkle"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
 	"github.com/gin-gonic/gin"
 )
 

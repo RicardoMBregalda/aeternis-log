@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
 	"github.com/go-pdf/fpdf"
 )
 
@@ -58,7 +58,7 @@ func BuildAuditReportPDF(r models.AuditReport) ([]byte, error) {
 	pdf.Ln(3)
 	pdf.SetFont("Helvetica", "I", 8)
 	pdf.MultiCell(0, 4, "Each Merkle root is anchored on Hyperledger Fabric. To verify integrity "+
-		"independently, recompute the root from the records (e.g. the `anchor` CLI) and compare it with "+
+		"independently, recompute the root from the records (e.g. the `aeternislog` CLI) and compare it with "+
 		"the value above and the one anchored on-chain (GET /public/anchors/<batch id>).", "", "L", false)
 
 	var buf bytes.Buffer

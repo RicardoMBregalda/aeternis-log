@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RicardoMBregalda/tcc-log-management/go-api/pkg/config"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 )
 
 // dockerExecBackend talks to the peer by shelling out to

@@ -45,9 +45,9 @@ curl -s -XPOST http://localhost:5001/api/v1/audit/records/verify/<batch_id>
 Go:
 
 ```go
-import anchor "github.com/RicardoMBregalda/tcc-log-management/sdk/go"
+import "github.com/RicardoMBregalda/aeternis-log/sdk/go"
 
-c := anchor.New("http://localhost:5001")
+c := aeternislog.New("http://localhost:5001")
 rec, _ := c.CreateRecord(ctx, "audit", "payments", map[string]any{"event": "charge"}, nil)
 batch, _ := c.BatchRecords(ctx, "audit")
 res, _ := c.VerifyBatch(ctx, "audit", batch.BatchID) // res.IsValid
@@ -59,7 +59,7 @@ Python:
 pip install ./sdk/python
 ```
 ```python
-from anchor import Client
+from aeternislog import Client
 c = Client("http://localhost:5001")
 rec = c.create_record("audit", source="payments", payload={"event": "charge"})
 batch = c.batch_records("audit")
@@ -70,7 +70,7 @@ assert c.verify_batch("audit", batch.batch_id).is_valid
 
 ```bash
 # Export a batch's records to records.csv (id,timestamp,source,payload), then:
-anchor verify --file records.csv --api http://localhost:5001 --domain audit --batch-id <batch_id>
+aeternislog verify --file records.csv --api http://localhost:5001 --domain audit --batch-id <batch_id>
 # exit 0 = VALID, exit 2 = CORRUPTED
 ```
 

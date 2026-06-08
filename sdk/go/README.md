@@ -6,13 +6,13 @@ automatic retries) and — crucially — recomputes record hashes and Merkle roo
 trusting the API.
 
 ```go
-import anchor "github.com/RicardoMBregalda/tcc-log-management/sdk/go"
+import "github.com/RicardoMBregalda/aeternis-log/sdk/go"
 ```
 
 ## Usage
 
 ```go
-c := anchor.New("http://localhost:5001", anchor.WithAPIKey("my-key"))
+c := aeternislog.New("http://localhost:5001", anchor.WithAPIKey("my-key"))
 ctx := context.Background()
 
 // Create a record. The SDK generates the id/timestamp client-side and verifies

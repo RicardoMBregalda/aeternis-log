@@ -5,7 +5,7 @@ Thumbs.db
 # Go build artifacts
 /api/api
 /api/bin/
-/api/log-api
+/api/aeternislog-api
 *.test
 *.out
 
