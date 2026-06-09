@@ -1,6 +1,6 @@
-# AeternisLog — Tamper-Evident Log Anchoring
+# AeternisLog — Tamper-Evident Data Anchoring
 
-Log management API with **cryptographic proof of integrity**. Logs go to MongoDB (fast, queryable), are grouped into **Merkle Trees**, and the root of each batch is anchored on **Hyperledger Fabric** (immutable, auditable). A **Write-Ahead Log (WAL)** with `fsync` guarantees zero data loss before any processing.
+**AeternisLog** gives any data **cryptographic proof of integrity**. Records go to MongoDB (fast, queryable), are grouped into **Merkle Trees**, and the root of each batch is anchored on **Hyperledger Fabric** (immutable, auditable). A **Write-Ahead Log (WAL)** with `fsync` guarantees zero data loss before any processing.
 
 Any tampering is mathematically detectable: an auditor recomputes the Merkle Root from MongoDB and compares it against what is stored on the blockchain.
 

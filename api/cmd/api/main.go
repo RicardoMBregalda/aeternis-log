@@ -38,7 +38,7 @@ var (
 
 // @title AeternisLog API
 // @version 1.0
-// @description High-performance log management API with WAL, Merkle Tree, and Fabric integration
+// @description AeternisLog — tamper-evident data anchoring API (WAL, Merkle Tree, Hyperledger Fabric)
 // @termsOfService http://swagger.io/terms/
 
 // @contact.name Ricardo M. Bregalda
