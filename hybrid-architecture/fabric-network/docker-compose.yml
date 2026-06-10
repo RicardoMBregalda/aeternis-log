@@ -1,6 +1,6 @@
 networks:
   log-net:
-    name: tcc_log_network
+    name: aeternislog_network
     external: true
 
 services:
@@ -92,7 +92,7 @@ services:
       - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
       - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=password
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=tcc_log_network
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=aeternislog_network
       - CORE_VM_DOCKER_HOSTCONFIG_CPUS=1.0
       - CORE_VM_DOCKER_HOSTCONFIG_MEMORY=1073741824
       - FABRIC_LOGGING_SPEC=WARNING
@@ -136,7 +136,7 @@ services:
       - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
       - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=password
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=tcc_log_network
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=aeternislog_network
       - CORE_VM_DOCKER_HOSTCONFIG_CPUS=1.0
       - CORE_VM_DOCKER_HOSTCONFIG_MEMORY=1073741824
       - FABRIC_LOGGING_SPEC=WARNING
@@ -181,7 +181,7 @@ services:
       - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
       - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=password
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=tcc_log_network
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=aeternislog_network
       - CORE_VM_DOCKER_HOSTCONFIG_CPUS=1.0
       - CORE_VM_DOCKER_HOSTCONFIG_MEMORY=1073741824
       - FABRIC_LOGGING_SPEC=WARNING
@@ -216,16 +216,6 @@ services:
       - peer1.org1.example.com
       - couchdb2
 
-  mongo:
-    image: mongo:7.0
-    container_name: mongo
-    ports:
-      - "27017:27017"
-    networks:
-      - log-net
-    volumes:
-      - mongo-data:/data/db
-
   cli:
     image: hyperledger/fabric-tools:2.4
     container_name: cli
@@ -258,6 +248,3 @@ services:
       - peer0.org1.example.com
       - peer1.org1.example.com
       - peer2.org1.example.com
-
-volumes:
-  mongo-data:

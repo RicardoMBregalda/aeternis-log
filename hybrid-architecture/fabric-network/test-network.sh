@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # ============================================
-# Script de Teste da Rede Fabric
+# Fabric Network Test Script
 # ============================================
-# 
-# Executa testes rápidos para validar que a rede está funcionando corretamente.
+#
+# Runs quick tests to validate that the network is working correctly.
 #
 
 set -e
 
-# Cores para output
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -23,60 +23,60 @@ print_header() {
 }
 
 print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}[OK] $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}❌ $1${NC}"
+    echo -e "${RED}[ERROR] $1${NC}"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+    echo -e "${BLUE}[INFO] $1${NC}"
 }
 
 # ============================================
-# TESTES
+# TESTS
 # ============================================
-print_header "🧪 TESTES DA REDE FABRIC"
+print_header "Fabric network tests"
 
-# Teste 1: Container CLI respondendo
-print_info "Teste 1: Verificando container CLI..."
+# Test 1: CLI container responding
+print_info "Test 1: Checking the CLI container..."
 if docker exec cli echo "OK" &>/dev/null; then
-    print_success "Container CLI está respondendo"
+    print_success "CLI container is responding"
 else
-    print_error "Container CLI não está acessível"
+    print_error "CLI container is not reachable"
     exit 1
 fi
 
-# Teste 2: Canal criado
-print_info "Teste 2: Verificando canal logchannel..."
+# Test 2: Channel created
+print_info "Test 2: Checking the logchannel channel..."
 if docker exec cli peer channel list 2>/dev/null | grep -q "logchannel"; then
-    print_success "Canal 'logchannel' existe"
+    print_success "Channel 'logchannel' exists"
 else
-    print_error "Canal 'logchannel' não encontrado"
+    print_error "Channel 'logchannel' not found"
     exit 1
 fi
 
-# Teste 3: Chaincode instalado
-print_info "Teste 3: Verificando chaincode instalado..."
+# Test 3: Chaincode installed
+print_info "Test 3: Checking installed chaincode..."
 if docker exec cli peer lifecycle chaincode queryinstalled 2>/dev/null | grep -q "logchaincode"; then
-    print_success "Chaincode 'logchaincode' está instalado"
+    print_success "Chaincode 'logchaincode' is installed"
 else
-    print_error "Chaincode não está instalado"
+    print_error "Chaincode is not installed"
     exit 1
 fi
 
-# Teste 4: Chaincode committed
-print_info "Teste 4: Verificando chaincode committed..."
+# Test 4: Chaincode committed
+print_info "Test 4: Checking committed chaincode..."
 if docker exec cli peer lifecycle chaincode querycommitted -C logchannel 2>/dev/null | grep -q "logchaincode"; then
-    print_success "Chaincode está committed no canal"
+    print_success "Chaincode is committed on the channel"
 else
-    print_error "Chaincode não está committed"
+    print_error "Chaincode is not committed"
     exit 1
 fi
 
-# Teste 5: Transação de escrita (invoke)
-print_info "Teste 5: Testando transação de escrita..."
+# Test 5: Write transaction (invoke)
+print_info "Test 5: Testing a write transaction..."
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 LOG_ID="TEST_$(date +%s)"
 
@@ -87,34 +87,34 @@ docker exec cli bash -c "
     export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp
     export CORE_PEER_ADDRESS=peer0.org1.example.com:7051
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
-    
+
     peer chaincode invoke \
         -C logchannel \
         -n logchaincode \
-        -c '{\"Args\":[\"CreateLog\",\"$LOG_ID\",\"hash123\",\"$TIMESTAMP\",\"test-script\",\"INFO\",\"Teste automatizado da rede\",\"{}\",\"\"]}' \
+        -c '{\"Args\":[\"CreateLog\",\"$LOG_ID\",\"hash123\",\"$TIMESTAMP\",\"test-script\",\"INFO\",\"Automated network test\",\"{}\",\"\"]}' \
         --tls \
         --cafile \$ORDERER_CA
 " &>/dev/null
 
 if [ $? -eq 0 ]; then
-    print_success "Transação de escrita executada com sucesso"
+    print_success "Write transaction executed successfully"
 else
-    print_error "Falha na transação de escrita"
+    print_error "Write transaction failed"
     exit 1
 fi
 
-# Aguardar transação ser processada
+# Wait for the transaction to be processed
 sleep 3
 
-# Teste 6: Transação de leitura (query)
-print_info "Teste 6: Testando transação de leitura..."
+# Test 6: Read transaction (query)
+print_info "Test 6: Testing a read transaction..."
 QUERY_RESULT=$(docker exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID='Org1MSP'
     export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp
     export CORE_PEER_ADDRESS=peer0.org1.example.com:7051
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
-    
+
     peer chaincode query \
         -C logchannel \
         -n logchaincode \
@@ -122,32 +122,32 @@ QUERY_RESULT=$(docker exec cli bash -c "
 " 2>&1)
 
 if echo "$QUERY_RESULT" | grep -q "$LOG_ID"; then
-    print_success "Transação de leitura executada com sucesso"
+    print_success "Read transaction executed successfully"
     echo ""
-    echo "📄 Resultado da query:"
+    echo "Query result:"
     echo "$QUERY_RESULT" | jq '.' 2>/dev/null || echo "$QUERY_RESULT"
 else
-    print_error "Falha na transação de leitura"
+    print_error "Read transaction failed"
     echo "$QUERY_RESULT"
     exit 1
 fi
 
 # ============================================
-# RESUMO
+# SUMMARY
 # ============================================
-print_header "✅ TODOS OS TESTES PASSARAM!"
+print_header "All tests passed"
 
-echo "Estatísticas da Rede:"
+echo "Network statistics:"
 echo ""
-echo "📊 Containers:"
-docker-compose ps --format "table {{.Name}}\t{{.Status}}" | grep "Up" | wc -l | xargs echo "  • Rodando:"
+echo "Containers:"
+docker-compose ps --format "table {{.Name}}\t{{.Status}}" | grep "Up" | wc -l | xargs echo "  - Running:"
 echo ""
-echo "🔗 Canal:"
-echo "  • Nome: logchannel"
-docker exec cli peer channel getinfo -c logchannel 2>/dev/null | grep "Blockchain info:" | sed 's/^/  • /'
+echo "Channel:"
+echo "  - Name: logchannel"
+docker exec cli peer channel getinfo -c logchannel 2>/dev/null | grep "Blockchain info:" | sed 's/^/  - /'
 echo ""
-echo "📦 Chaincode:"
-docker exec cli peer lifecycle chaincode querycommitted -C logchannel 2>/dev/null | grep "Name:" | sed 's/^/  • /'
+echo "Chaincode:"
+docker exec cli peer lifecycle chaincode querycommitted -C logchannel 2>/dev/null | grep "Name:" | sed 's/^/  - /'
 echo ""
 
-print_info "A rede Hyperledger Fabric está completamente operacional! 🚀"
+print_info "The Hyperledger Fabric network is fully operational"

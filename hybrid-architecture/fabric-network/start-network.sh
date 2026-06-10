@@ -1,34 +1,33 @@
 #!/bin/bash
 
 # ============================================
-# Script Master - Inicialização da Rede Fabric
+# Master Script - Fabric Network Startup
 # ============================================
-# 
-# Este script orquestra todo o processo de inicialização da rede Hyperledger Fabric.
-# Executa automaticamente todos os passos necessários na ordem correta.
 #
-# Uso: ./start-network.sh [opção]
+# This script orchestrates the entire Hyperledger Fabric network startup process.
+# It automatically runs all the required steps in the correct order.
 #
-# Opções:
-#   --clean     Limpa tudo e reinicia do zero
-#   --restart   Reinicia a rede sem recriar artefatos
-#   (nenhuma)   Inicialização normal (padrão)
+# Usage: ./start-network.sh [option]
+#
+# Options:
+#   --clean     Wipe everything and start from scratch
+#   --restart   Restart the network without recreating artifacts
+#   (none)      Normal startup (default)
 #
 
 set -e
 
-# Cores para output
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Diretório do script
+# Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Função para imprimir com cor
 print_header() {
     echo -e "\n${BLUE}=========================================="
     echo -e "$1"
@@ -36,189 +35,189 @@ print_header() {
 }
 
 print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}[OK] $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    echo -e "${YELLOW}[WARNING] $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}❌ $1${NC}"
+    echo -e "${RED}[ERROR] $1${NC}"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+    echo -e "${BLUE}[INFO] $1${NC}"
 }
 
-# Processar argumentos
+# Parse arguments
 CLEAN_MODE=false
 RESTART_MODE=false
 
 if [ "$1" == "--clean" ]; then
     CLEAN_MODE=true
-    print_warning "Modo CLEAN: Removendo tudo e recriando do zero"
+    print_warning "Clean mode: removing everything and recreating from scratch"
 elif [ "$1" == "--restart" ]; then
     RESTART_MODE=true
-    print_info "Modo RESTART: Reiniciando sem recriar artefatos"
+    print_info "Restart mode: restarting without recreating artifacts"
 fi
 
 # ============================================
-# PASSO 1: LIMPAR (se --clean)
+# STEP 1: CLEAN (if --clean)
 # ============================================
 if [ "$CLEAN_MODE" = true ]; then
-    print_header "PASSO 1: LIMPEZA COMPLETA"
-    
-    echo "🗑️  Parando e removendo containers..."
+    print_header "Step 1: Full cleanup"
+
+    echo "Stopping and removing containers..."
     docker-compose down -v 2>/dev/null || true
-    
-    echo "🗑️  Removendo artefatos antigos..."
+
+    echo "Removing old artifacts..."
     rm -rf crypto-config/ 2>/dev/null || true
     rm -f config/genesis.block config/logchannel.tx 2>/dev/null || true
     rm -f *.block *.tar.gz 2>/dev/null || true
-    
-    print_success "Limpeza completa realizada"
+
+    print_success "Full cleanup complete"
     sleep 2
 fi
 
 # ============================================
-# PASSO 2: VERIFICAR/GERAR ARTEFATOS
+# STEP 2: CHECK/GENERATE ARTIFACTS
 # ============================================
 if [ "$RESTART_MODE" = false ]; then
-    print_header "PASSO 2: ARTEFATOS CRIPTOGRÁFICOS"
-    
+    print_header "Step 2: Cryptographic artifacts"
+
     if [ -f "config/genesis.block" ] && [ -f "config/logchannel.tx" ] && [ -d "crypto-config" ]; then
-        print_info "Artefatos já existem, pulando geração..."
+        print_info "Artifacts already exist, skipping generation..."
     else
-        print_info "Gerando certificados e artefatos da rede..."
+        print_info "Generating network certificates and artifacts..."
         chmod +x scripts/1-generate-artifacts.sh
         ./scripts/1-generate-artifacts.sh
-        print_success "Artefatos gerados com sucesso"
+        print_success "Artifacts generated successfully"
     fi
-    
-    # Verificar se artefatos foram criados
+
+    # Check that the artifacts were created
     if [ ! -f "config/genesis.block" ] || [ ! -f "config/logchannel.tx" ]; then
-        print_error "Falha ao gerar artefatos!"
+        print_error "Failed to generate artifacts"
         exit 1
     fi
-    
+
     sleep 2
 fi
 
 # ============================================
-# PASSO 3: INICIAR CONTAINERS
+# STEP 3: START CONTAINERS
 # ============================================
-print_header "PASSO 3: INICIAR CONTAINERS DOCKER"
+print_header "Step 3: Start Docker containers"
 
 if [ "$RESTART_MODE" = true ]; then
-    echo "🔄 Reiniciando containers..."
+    echo "Restarting containers..."
     docker-compose restart
 else
-    echo "🚀 Iniciando containers Docker Compose..."
+    echo "Starting Docker Compose containers..."
     docker-compose up -d
 fi
 
-# Aguardar containers ficarem saudáveis
-echo "⏳ Aguardando containers iniciarem..."
+# Wait for the containers to become healthy
+echo "Waiting for containers to start..."
 sleep 15
 
-# Verificar status
+# Check status
 RUNNING=$(docker-compose ps --services --filter "status=running" | wc -l)
 TOTAL=$(docker-compose ps --services | wc -l)
 
 if [ "$RUNNING" -lt "$((TOTAL - 2))" ]; then
-    print_warning "Alguns containers podem não estar rodando corretamente"
+    print_warning "Some containers may not be running correctly"
     docker-compose ps
 else
-    print_success "Todos os containers iniciados ($RUNNING/$TOTAL rodando)"
+    print_success "All containers started ($RUNNING/$TOTAL running)"
 fi
 
 sleep 2
 
 # ============================================
-# PASSO 4: AGUARDAR INICIALIZAÇÃO AUTOMÁTICA
+# STEP 4: WAIT FOR AUTOMATIC INITIALIZATION
 # ============================================
-print_header "PASSO 4: CONFIGURAÇÃO AUTOMÁTICA DA REDE"
+print_header "Step 4: Automatic network configuration"
 
-print_info "Container CLI está executando inicialização automática..."
-print_info "Isso inclui:"
-echo "  • Criação do canal 'logchannel'"
-echo "  • Junção dos peers ao canal"
-echo "  • Instalação do chaincode"
-echo "  • Aprovação e commit do chaincode"
+print_info "The CLI container is running the automatic initialization..."
+print_info "This includes:"
+echo "  - Creating the 'logchannel' channel"
+echo "  - Joining the peers to the channel"
+echo "  - Installing the chaincode"
+echo "  - Approving and committing the chaincode"
 echo ""
 
-# Aguardar inicialização automática (verificando logs)
-echo "⏳ Aguardando configuração automática (30-60s)..."
+# Wait for automatic initialization (by checking the logs)
+echo "Waiting for automatic configuration (30-60s)..."
 
 for i in {1..60}; do
-    if docker logs cli 2>&1 | grep -q "REDE FABRIC CONFIGURADA COM SUCESSO"; then
-        print_success "Inicialização automática concluída!"
+    if docker logs cli 2>&1 | grep -q "Fabric network configured successfully"; then
+        print_success "Automatic initialization complete"
         break
     fi
-    
+
     if [ $i -eq 60 ]; then
-        print_warning "Tempo limite atingido, verificando status manualmente..."
+        print_warning "Timeout reached, checking status manually..."
     fi
-    
+
     sleep 1
 done
 
 sleep 2
 
 # ============================================
-# PASSO 5: VERIFICAÇÃO
+# STEP 5: VERIFICATION
 # ============================================
-print_header "PASSO 5: VERIFICAÇÃO DO STATUS"
+print_header "Step 5: Status verification"
 
-echo "📊 Verificando canal..."
+echo "Checking the channel..."
 if docker exec cli peer channel list 2>/dev/null | grep -q "logchannel"; then
-    print_success "Canal 'logchannel' criado e peers conectados"
+    print_success "Channel 'logchannel' created and peers connected"
 else
-    print_error "Canal não foi criado corretamente"
+    print_error "Channel was not created correctly"
 fi
 
 echo ""
-echo "📦 Verificando chaincode..."
+echo "Checking the chaincode..."
 if docker exec cli peer lifecycle chaincode querycommitted -C logchannel 2>/dev/null | grep -q "logchaincode"; then
-    print_success "Chaincode 'logchaincode' instalado e committed"
+    print_success "Chaincode 'logchaincode' installed and committed"
 else
-    print_warning "Chaincode pode não estar completamente configurado"
+    print_warning "Chaincode may not be fully configured"
 fi
 
 sleep 2
 
 # ============================================
-# RESUMO FINAL
+# FINAL SUMMARY
 # ============================================
-print_header "✅ REDE FABRIC PRONTA!"
+print_header "Fabric network ready"
 
-echo "📊 Status dos Componentes:"
+echo "Component status:"
 echo ""
 docker-compose ps --format "table {{.Name}}\t{{.Status}}" | grep -E "(NAME|Up)" || docker-compose ps
 echo ""
 
-print_info "URLs de Acesso:"
-echo "  • CouchDB Peer0: http://localhost:5984/_utils (admin/password)"
-echo "  • CouchDB Peer1: http://localhost:6984/_utils (admin/password)"
-echo "  • CouchDB Peer2: http://localhost:7984/_utils (admin/password)"
+print_info "Access URLs:"
+echo "  - CouchDB Peer0: http://localhost:5984/_utils (admin/password)"
+echo "  - CouchDB Peer1: http://localhost:6984/_utils (admin/password)"
+echo "  - CouchDB Peer2: http://localhost:7984/_utils (admin/password)"
 echo ""
 
-print_info "Comandos Úteis:"
-echo "  • Ver logs do CLI:     docker logs cli -f"
-echo "  • Testar chaincode:    ./test-network.sh"
-echo "  • Parar rede:          docker-compose down"
-echo "  • Reiniciar:           ./start-network.sh --restart"
-echo "  • Reset completo:      ./start-network.sh --clean"
+print_info "Useful commands:"
+echo "  - View CLI logs:       docker logs cli -f"
+echo "  - Test chaincode:      ./test-network.sh"
+echo "  - Stop network:        docker-compose down"
+echo "  - Restart:             ./start-network.sh --restart"
+echo "  - Full reset:          ./start-network.sh --clean"
 echo ""
 
-print_header "🎉 INICIALIZAÇÃO CONCLUÍDA COM SUCESSO!"
+print_header "Initialization completed successfully"
 
-# Perguntar se quer executar testes
+# Ask whether to run tests
 echo ""
-read -p "Deseja executar testes do chaincode agora? (s/N): " -n 1 -r
+read -p "Do you want to run the chaincode tests now? (y/N): " -n 1 -r
 echo ""
-if [[ $REPLY =~ ^[Ss]$ ]]; then
-    print_info "Executando testes..."
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    print_info "Running tests..."
     ./test-network.sh
 fi

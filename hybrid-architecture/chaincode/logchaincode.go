@@ -218,25 +218,25 @@ func (s *SmartContract) BuildMerkleTree(hashes []string) string {
 		return ""
 	}
 
-	// Se houver apenas um hash, ele é a raiz
+	// If there is only one hash, it is the root
 	if len(hashes) == 1 {
 		return hashes[0]
 	}
 
-	// Copia os hashes para não modificar o original
+	// Copy the hashes so the original is not modified
 	currentLevel := make([]string, len(hashes))
 	copy(currentLevel, hashes)
 
-	// Constrói a árvore bottom-up
+	// Build the tree bottom-up
 	for len(currentLevel) > 1 {
 		var nextLevel []string
 
-		// Se o número de nós for ímpar, duplica o último
+		// If the number of nodes is odd, duplicate the last one
 		if len(currentLevel)%2 != 0 {
 			currentLevel = append(currentLevel, currentLevel[len(currentLevel)-1])
 		}
 
-		// Combina pares de hashes
+		// Combine pairs of hashes
 		for i := 0; i < len(currentLevel); i += 2 {
 			combinedHash := combineHashes(currentLevel[i], currentLevel[i+1])
 			nextLevel = append(nextLevel, combinedHash)
@@ -248,7 +248,7 @@ func (s *SmartContract) BuildMerkleTree(hashes []string) string {
 	return currentLevel[0]
 }
 
-// combineHashes combina dois hashes usando SHA256
+// combineHashes combines two hashes using SHA256
 func combineHashes(hash1, hash2 string) string {
 	combined := hash1 + hash2
 	hasher := sha256.New()

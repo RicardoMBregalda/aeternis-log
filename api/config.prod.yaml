@@ -1,0 +1,123 @@
+# API config for the production-staging network with PER-TENANT CHANNELS (Phase H).
+# Mounted at /app/config.yaml by docker-compose.prod.yml. Self-contained: auth is
+# enabled so each tenant is resolved from its API key, and fabric.tenant_channels
+# routes anchoring to a dedicated Fabric channel per tenant (ledger-level isolation).
+# The API keys below are throwaway STAGING keys, not production secrets.
+
+server:
+  host: "0.0.0.0"
+  port: 5001
+  debug: false
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 10s
+
+mongodb:
+  url: "mongodb://mongodb-prod:27017"
+  database: "logdb"
+  collection: "logs"
+  records_collection: "records"
+  sync_control_collection: "sync_control"
+  min_pool_size: 10
+  max_pool_size: 100
+  max_idle_time_ms: 300000
+  server_selection_timeout_ms: 5000
+  connect_timeout: 10s
+  socket_timeout: 30s
+
+redis:
+  host: "redis-prod"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 50
+  min_idle_conns: 10
+  max_retries: 3
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+  cache_ttl: 600
+  cache_enabled: true
+
+fabric:
+  api_url: "http://localhost:4000"
+  channel: "logchannel"          # default channel (tenant "default")
+  chaincode: "logchaincode"
+  sync_enabled: true
+  sync_max_workers: 10
+  invoke_timeout: 30s
+  query_timeout: 10s
+  transport: "gateway"
+  tls_enabled: true
+  # Gateway (gRPC) identity: Org1, issued by the prod Fabric CA. Phase G: the API
+  # mounts only its own least-privilege identity bundle at /fabric-identity (admin
+  # cert + key 0400 + peer TLS CA), owned by the runtime uid — not the whole
+  # organizations/ tree. Built by prod/scripts/build-api-identity.sh.
+  msp_id: "Org1MSP"
+  gateway_peer_endpoint: "peer0.org1.example.com:7051"
+  gateway_server_name_override: "peer0.org1.example.com"
+  gateway_peer_tls_ca_file: "/fabric-identity/tls/ca.crt"
+  identity_cert_file: "/fabric-identity/signcerts/cert.pem"
+  identity_key_dir: "/fabric-identity/keystore"
+  # Phase H: per-tenant channel. Tenant "acme" anchors to its own ledger;
+  # unmapped tenants (e.g. "default") anchor to `channel` above.
+  tenant_channels:
+    acme: "acme-channel"
+
+wal:
+  enabled: true
+  backend: "file"
+  directory: "/var/log/aeternislog-wal"
+  check_interval: 5s
+  max_file_size_mb: 100
+  rotation_enabled: true
+  retention_days: 7
+  stream_key: "wal:pending:logs"
+  consumer_group: "wal-processors"
+  read_count: 128
+  block_timeout: 2s
+  claim_min_idle: 30s
+
+# Auto-batch disabled so the isolation test controls exactly when each tenant's
+# records are anchored (manual force-batch). Force-batch still works.
+batching:
+  enabled: false
+  auto_batch_size: 100
+  auto_batch_interval: 30s
+  batch_executor_workers: 5
+  verification_enabled: true
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  enable_caller: true
+  enable_stacktrace: false
+
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"
+
+# Auth ON: the tenant is resolved from the API key. Flat api_keys -> tenant
+# "default"; keys under a tenant -> that tenant. STAGING keys only.
+auth:
+  enabled: true
+  header_name: "X-API-Key"
+  api_keys:
+    - "staging-default-key"
+  tenants:
+    - id: "acme"
+      keys: ["staging-acme-key"]
+
+rate_limit:
+  enabled: false
+  max_requests: 100
+  window: 1m
+
+webhook:
+  enabled: false
+  url: ""
+  secret: ""
+  timeout: 5s
+  max_retries: 3
