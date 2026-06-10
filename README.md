@@ -4,8 +4,6 @@
 
 Any tampering is mathematically detectable: an auditor recomputes the Merkle Root from MongoDB and compares it against what is stored on the blockchain.
 
-> **Product vertical:** Compliance & Audit Trail. Direction and plan in [ROADMAP.md](ROADMAP.md).
-
 ## Architecture
 
 ```
