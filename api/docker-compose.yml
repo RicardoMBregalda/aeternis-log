@@ -1,0 +1,93 @@
+services:
+  go-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aeternislog-api
+    hostname: go-api
+    ports:
+      - "5001:5001"  # API port
+      - "9090:9090"  # Metrics port
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - wal-data:/var/log/aeternislog-wal
+      # crypto material for the "gateway" (gRPC) transport (default), mounted read-only.
+      - ../hybrid-architecture/fabric-network/crypto-config:/fabric-crypto:ro
+      # docker.sock is only needed for the legacy "docker-exec" transport; uncomment to use it:
+      # - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=5001
+      - MONGO_URL=mongodb://mongodb:27017
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - FABRIC_API_URL=http://fabric-api:4000
+      - WAL_DIRECTORY=/var/log/aeternislog-wal
+      - LOG_LEVEL=info
+      # Fabric transport defaults to "gateway" (gRPC), using the crypto mounted
+      # at /fabric-crypto and the config.yaml paths. To fall back to the legacy
+      # transport, set FABRIC_TRANSPORT=docker-exec and uncomment the docker.sock mount.
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - aeternislog-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  mongodb:
+    image: mongo:7.0
+    container_name: aeternislog-mongodb
+    hostname: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=logdb
+    networks:
+      - aeternislog-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aeternislog-redis
+    hostname: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    # AOF with appendfsync=always gives per-write durability, matching the file
+    # WAL's fsync guarantee when wal.backend is "redis" (zero data loss).
+    command: redis-server --appendonly yes --appendfsync always
+    networks:
+      - aeternislog-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  mongodb-data:
+    driver: local
+  redis-data:
+    driver: local
+  wal-data:
+    driver: local
+
+networks:
+  aeternislog-network:
+    external: true
+    name: aeternislog_network

@@ -1,372 +1,156 @@
-# Sistema de Gerenciamento de Logs - Arquitetura Híbrida
+# AeternisLog — Tamper-Evident Data Anchoring
 
-Sistema de gerenciamento de logs desenvolvido como trabalho de conclusão de curso (TCC), comparando arquitetura tradicional baseada em PostgreSQL com arquitetura híbrida utilizando MongoDB, Hyperledger Fabric v2.4.9 e blockchain.
+**AeternisLog** gives any data **cryptographic proof of integrity**. Records go to MongoDB (fast, queryable), are grouped into **Merkle Trees**, and the root of each batch is anchored on **Hyperledger Fabric** (immutable, auditable). A **Write-Ahead Log (WAL)** with `fsync` guarantees zero data loss before any processing.
 
-## Arquitetura
+Any tampering is mathematically detectable: an auditor recomputes the Merkle Root from MongoDB and compares it against what is stored on the blockchain.
 
-### Arquitetura Tradicional
-- PostgreSQL 15 em cluster primary-standby
-- Replicação streaming síncrona
-- Failover automático
-- API REST em Go 1.18 com framework Gin v1.9.1
+> **Product vertical:** Compliance & Audit Trail. Direction and plan in [ROADMAP.md](ROADMAP.md).
 
-### Arquitetura Híbrida
-- MongoDB v7.0 para armazenamento off-chain
-- Hyperledger Fabric v2.4 para blockchain (consenso Raft)
-- Write-Ahead Log (WAL) para durabilidade (0% perda de dados)
-- Redis para cache (opcional)
-- Merkle Tree para integridade criptográfica
-- API REST em Go 1.18 com framework Gin v1.9.1
-- Chaincode em Go para registro de hashes no ledger
+## Architecture
 
-## Requisitos
+```
+POST /logs ──► WAL (fsync) ──► MongoDB ──► batch (Merkle root) ──► anchor on Fabric
+```
 
-- Docker 24.x
-- Docker Compose 2.0+
-- Go 1.18+ (para API de testes)
-- Python 3.10+ (para análise de resultados)
-- Ubuntu 22.04 LTS (recomendado, via WSL2 no Windows)
-- 8 vCPUs (AMD Ryzen 7 5700X3D ou equivalente)
-- 16GB RAM DDR4
-- 100GB SSD NVMe
+| Component | Role |
+|---|---|
+| **Go API** (`api/`) | REST (Gin), structured logging (zerolog), WAL, Merkle Tree batching |
+| **MongoDB** | Off-chain storage for logs (hot tier) |
+| **Redis** | Optional cache (graceful degradation if absent) |
+| **Hyperledger Fabric** (`hybrid-architecture/`) | Permissioned blockchain (Raft consensus) that stores the Merkle roots; chaincode in Go |
+| **WAL** | Durability (0% loss). Two backends: `file` (`O_SYNC` + `fsync`, single instance) or `redis` (Redis Streams consumer group, multiple API instances) |
 
-## Instalação
+## Prerequisites
 
-### 1. Clonar Repositório
+- Docker + Docker Compose
+- Go 1.18+ (for native build/test)
+- `make`
+
+## Quick start
 
 ```bash
-git clone <repository-url>
-cd tcc-log-management
+make up        # brings up EVERYTHING: blockchain (Fabric) + API + MongoDB + Redis
+make down      # stops everything
+make help      # lists all commands
 ```
 
-### 2. Compilar API Go
+For development without the blockchain:
 
 ```bash
-cd testing/go-api
-make build
+make dev       # brings up only MongoDB + Redis
+make run       # runs the API natively (Go)
+# or
+make api       # runs the API in a container (without Fabric)
 ```
 
-Ou usando Docker:
+The API comes up at **http://localhost:5001** — Swagger at `/swagger/index.html`, health at `/health`.
+
+> The Fabric network and the API share the Docker network `aeternislog_network`, created automatically by `make`. Its absence was previously what made `docker compose up` create nothing.
+
+## Project structure
+
+```
+.
+├── api/                      # Go API (the product)
+│   ├── cmd/api/              # entrypoint
+│   ├── internal/             # handlers, database, fabric, merkle, wal, logger, ...
+│   ├── pkg/config/           # configuration
+│   ├── Dockerfile
+│   └── docker-compose.yml    # API + MongoDB + Redis
+├── hybrid-architecture/
+│   ├── chaincode/            # smart contract (Go)
+│   └── fabric-network/       # Fabric network (peers, orderer, CA, scripts)
+├── Makefile                  # orchestration (make up / down / dev / ...)
+├── ROADMAP.md
+└── README.md
+```
+
+## API — main endpoints
+
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/logs` | Create a log (automatic hash + WAL) |
+| `GET` | `/logs` | List with filters (`source`, `level`, `limit`) and pagination — `offset` or keyset `cursor` (response returns `next_cursor`) |
+| `GET` | `/logs/:id` | Fetch by ID |
+| `POST` | `/merkle/force-batch` | Force batch creation |
+| `POST` | `/merkle/verify/:id` | Verify the integrity of a batch (Merkle proof) |
+| `GET` | `/merkle/batches` | List batches |
+| `GET` | `/health` · `/stats` | Health and statistics |
+
+Example:
 
 ```bash
-cd testing/go-api
-docker-compose up -d
+curl -X POST http://localhost:5001/logs \
+  -H 'Content-Type: application/json' \
+  -d '{"source": "auth-service", "level": "INFO", "message": "User login successful"}'
 ```
 
-### 3. Instalar Dependências Python (para análise de resultados)
+## Records (generic domain)
+
+Beyond logs, the API anchors **any** auditable record under a client-chosen domain — the core of the *Tamper-Evident Data Anchoring* pattern. A `Log` is just a record in the `logs` domain.
+
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/api/v1/{domain}/records` | Create a record (`payload` is any JSON; integrity `hash` computed automatically) |
+| `GET` | `/api/v1/{domain}/records` | List with filters (`source`) and pagination (`offset` or `cursor`) |
+| `GET` | `/api/v1/{domain}/records/:id` | Fetch by ID |
+| `DELETE` | `/api/v1/{domain}/records/:id` | Soft-delete (audit trail preserved) |
+| `POST` | `/api/v1/{domain}/records/batch` | Batch pending records, compute the Merkle root and anchor it to Fabric |
+| `POST` | `/api/v1/{domain}/records/verify/:batchId` | Verify a batch's integrity (recompute vs the anchored root) |
 
 ```bash
-cd testing
-pip install -r requirements.txt
+curl -X POST http://localhost:5001/api/v1/contracts/records \
+  -H 'Content-Type: application/json' \
+  -d '{"source": "crm", "payload": {"party": "acme", "amount": 100}, "hash_fields": ["party", "amount"]}'
 ```
 
-### 4. Configurar Variáveis de Ambiente
+The hash is `SHA-256(id | timestamp | source | canonical(payload))`. Optional `hash_fields` restricts which payload keys feed the hash (so other fields can change without breaking it); the canonical payload uses sorted keys, so the hash is independent of key order.
 
-As configurações estão em `testing/go-api/config.yaml`. Exemplo:
+Records are batched per domain (automatically, or via `POST .../records/batch`), their Merkle root is anchored on Fabric, and `POST .../records/verify/{batchId}` recomputes the root from current content and compares it with the anchored one — returning `409 CORRUPTED` if anything was tampered.
 
-```yaml
-server:
-  port: 5001
-  mode: release
+**Webhook:** set `webhook.enabled` + `webhook.url` (or `WEBHOOK_ENABLED`/`WEBHOOK_URL`) to receive a `batch.anchored` callback every time a batch — logs or records — is anchored. The JSON payload (`domain`, `batch_id`, `merkle_root`, `num_records`, `tx_id`, `anchored_at`) is signed with HMAC-SHA256 in `X-Webhook-Signature` when a `webhook.secret` is set; delivery is async with retries.
 
-mongodb:
-  uri: "mongodb://localhost:27017"
-  database: "logdb"
+**Go SDK:** [`sdk/go`](sdk/go) (package `aeternislog`, standard-library only) wraps the API with automatic retries and recomputes record hashes / Merkle roots **locally**, so integrity can be verified without trusting the server. See [sdk/go/README.md](sdk/go/README.md).
 
-postgres:
-  host: "localhost"
-  port: 5432
-  database: "logdb"
+## Authentication & rate limiting
 
-fabric:
-  peer_endpoint: "localhost:7051"
-  channel: "logchannel"
-```
-
-## Uso
-
-### Arquitetura Tradicional (PostgreSQL)
-
-#### Iniciar
+API key authentication and rate limiting are **opt-in** (off by default). Enable them in production:
 
 ```bash
-cd traditional-architecture
-./start-traditional.sh
+AUTH_ENABLED=true
+AUTH_API_KEYS=key-a,key-b          # comma-separated; configure at least one
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_MAX_REQUESTS=100        # per client IP, per window
+RATE_LIMIT_WINDOW=1m
 ```
 
-O script irá:
-- Iniciar containers PostgreSQL primary e standby
-- Configurar replicação streaming
-- Criar banco de dados e tabelas
-
-#### Testar
+When auth is enabled, the data routes (`/logs`, `/merkle`, `/wal`, `/stats`) require a key; `/health`, `/` and `/swagger` stay open. Send the key in `X-API-Key` or as a bearer token:
 
 ```bash
-./test-traditional.sh
+curl -H 'X-API-Key: key-a' http://localhost:5001/logs
+curl -H 'Authorization: Bearer key-a' http://localhost:5001/logs
 ```
 
-#### Parar
+Rate limiting is in-memory **per instance**; a Redis-backed shared limiter is the follow-up for multi-instance deployments.
+
+**Multi-tenancy:** map API keys to tenants via `auth.tenants` (`[{id, keys}]`); flat `api_keys` belong to tenant `default`. The caller's tenant is resolved from its key, and records are isolated per `(tenant, domain)` — a key for tenant A cannot read tenant B's records. (Per-org Fabric channels are a production-network follow-up; today tenants anchor to the same channel, namespaced by tenant in the batch id.)
+
+## Configuration
+
+The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`, `auth`, `rate_limit`.
+
+**Running multiple API instances:** set `wal.backend: redis` (or `WAL_BACKEND=redis`). The WAL then uses a Redis Streams consumer group, so each log entry is processed by exactly one instance and entries from a crashed instance are reclaimed automatically. In this mode durability depends on Redis persistence — run Redis with AOF enabled (`appendonly yes`; `appendfsync always` for parity with the file backend's per-write `fsync`). The default `file` backend keeps the original single-instance behavior.
+
+**Fabric transport:** the API talks to the peer via `fabric.transport`. `gateway` (default) uses the Fabric Gateway gRPC SDK with an X.509 identity and needs no Docker socket; `docker-exec` is the legacy fallback that shells out to the peer CLI. The gateway paths default to the docker-compose `/fabric-crypto` mount — for a native run (outside compose) set `FABRIC_TRANSPORT=docker-exec`, or override the gateway endpoint/paths (see `api/.env.example`).
+
+## Development
 
 ```bash
-./stop-traditional.sh
+make build     # compiles the API
+make test      # go test ./...
+make vet       # go vet ./...
 ```
 
-### Arquitetura Híbrida (MongoDB + Fabric)
+## License
 
-#### Iniciar
-
-```bash
-cd hybrid-architecture
-./fabric-network/start-network.sh
-```
-
-O script irá:
-- Gerar artefatos criptográficos
-- Iniciar rede Hyperledger Fabric
-- Criar canal e instalar chaincode
-- Iniciar MongoDB e Redis
-
-#### Iniciar API Go
-
-```bash
-cd testing/go-api
-make run
-```
-
-Ou usando o binário compilado:
-
-```bash
-cd testing/go-api
-./bin/log-api
-```
-
-A API estará disponível em `http://localhost:5001`
-
-#### Testar
-
-```bash
-cd hybrid-architecture
-./fabric-network/test-network.sh
-```
-
-#### Parar
-
-```bash
-cd hybrid-architecture
-./fabric-network/stop-network.sh
-```
-
-## Testes de Performance
-
-### Executar Todos os Cenários (S1-S9)
-
-```bash
-cd testing
-./run_all_tests.sh
-```
-
-### Executar Cenário Específico
-
-```bash
-cd testing
-python src/performance_tester.py --scenario S5 --architecture hybrid --api-url http://localhost:5001
-```
-
-### Cenários Disponíveis
-
-| Cenário | Volume | Taxa (logs/s) | Descrição |
-|---------|--------|---------------|-----------|
-| S1 | 10.000 | 100 | Baixo Volume + Baixa Taxa |
-| S2 | 10.000 | 1.000 | Baixo Volume + Média Taxa |
-| S3 | 10.000 | 10.000 | Baixo Volume + Alta Taxa |
-| S4 | 100.000 | 100 | Médio Volume + Baixa Taxa |
-| S5 | 100.000 | 1.000 | Médio Volume + Média Taxa |
-| S6 | 100.000 | 10.000 | Médio Volume + Alta Taxa |
-| S7 | 1.000.000 | 100 | Alto Volume + Baixa Taxa |
-| S8 | 1.000.000 | 1.000 | Alto Volume + Média Taxa |
-| S9 | 1.000.000 | 10.000 | Alto Volume + Alta Taxa |
-
-### Análise de Resultados
-
-```bash
-cd testing/src
-python analyze_results.py
-```
-
-Os resultados serão salvos em:
-- `testing/src/results/` (JSON e CSV)
-- `testing/results/` (relatórios consolidados)
-
-## API REST (Go)
-
-### Documentação Swagger
-
-Após iniciar a API, acesse a documentação interativa:
-
-**http://localhost:5001/swagger/index.html**
-
-### Endpoints Principais
-
-#### Logs
-- `POST /api/v1/logs` - Criar novo log
-- `POST /api/v1/logs/batch` - Criar múltiplos logs
-- `GET /api/v1/logs/:id` - Buscar log específico
-- `GET /api/v1/logs` - Listar logs com filtros (source, severity, timestamp)
-
-#### Merkle Tree & Blockchain
-- `POST /api/v1/merkle/batch` - Criar batch com Merkle Tree
-- `GET /api/v1/merkle/batch/:id` - Consultar batch
-- `POST /api/v1/merkle/verify` - Verificar integridade via Merkle proof
-- `POST /api/v1/blockchain/submit` - Submeter hash para blockchain
-
-#### Sistema
-- `GET /api/v1/health` - Health check
-- `GET /api/v1/metrics` - Métricas Prometheus
-
-### Exemplo de Uso
-
-```bash
-# Criar log
-curl -X POST http://localhost:5001/api/v1/logs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "timestamp": "2025-11-16T10:30:00Z",
-    "source": "auth-service",
-    "severity": "INFO",
-    "message": "User login successful",
-    "metadata": {
-      "userId": "12345",
-      "ip": "192.168.1.100"
-    }
-  }'
-
-# Listar logs com filtro
-curl "http://localhost:5001/api/v1/logs?source=auth-service&severity=ERROR&limit=10"
-
-# Verificar integridade Merkle
-curl -X POST http://localhost:5001/api/v1/merkle/verify \
-  -H "Content-Type: application/json" \
-  -d '{
-    "batchId": "batch-123",
-    "logId": "log-456"
-  }'
-```
-
-## Estrutura do Projeto
-
-```
-tcc-log-management/
-├── hybrid-architecture/        # Arquitetura híbrida
-│   ├── chaincode/             # Smart contract Fabric (Go)
-│   │   └── logchaincode.go
-│   └── fabric-network/        # Configurações da rede
-│       ├── configtx.yaml
-│       ├── docker-compose.yml
-│       └── scripts/
-├── traditional-architecture/   # Arquitetura PostgreSQL
-│   ├── docker-compose.yml
-│   └── scripts/               # Scripts SQL
-├── testing/                   # Framework de testes
-│   ├── go-api/                # API REST em Go
-│   │   ├── cmd/api/           # Entrypoint da aplicação
-│   │   ├── internal/          # Lógica de negócio
-│   │   │   ├── handlers/      # HTTP handlers
-│   │   │   ├── services/      # Serviços de log
-│   │   │   ├── database/      # Clients MongoDB/PostgreSQL
-│   │   │   ├── fabric/        # Integração Fabric SDK
-│   │   │   ├── merkle/        # Merkle Tree
-│   │   │   ├── wal/           # Write-Ahead Log
-│   │   │   ├── models/        # Modelos de dados
-│   │   │   ├── middleware/    # Middlewares HTTP
-│   │   │   └── cache/         # Implementação Redis
-│   │   ├── docs/              # Swagger docs
-│   │   ├── Dockerfile
-│   │   ├── Makefile
-│   │   └── config.yaml
-│   ├── src/                   # Scripts Python (análise)
-│   │   ├── analyze_results.py
-│   │   └── performance_tester.py
-│   ├── scripts/               # Scripts auxiliares
-│   ├── results/               # Resultados dos testes
-│   └── config.py              # Configurações Python
-└── tcc/                       # Documentação LaTeX (TCC)
-    └── *.tex
-```
-
-## Otimizações Implementadas
-
-### API Go (Ambas Arquiteturas)
-- **Concorrência nativa:** Goroutines para processamento paralelo
-- **Performance:** Compilação nativa, baixo consumo de CPU (0.4-30%)
-- **Connection pooling:** MongoDB (max 100 conexões), PostgreSQL (max 20)
-- **Framework Gin v1.9.1:** Router de alta performance
-- **Drivers nativos:** pgx (PostgreSQL), mongo-driver (MongoDB)
-
-### Arquitetura Híbrida
-- **Write-Ahead Log (WAL):** Garantia de 0% de perda de dados
-  - Syscalls `Write` + `Sync` para fsync atômico
-  - Durabilidade antes de qualquer processamento
-- **Merkle Tree:** Batching automático de 50 logs
-- **Fabric SDK Go:** Integração nativa com Hyperledger Fabric
-- **Índices MongoDB:** Compostos em timestamp, source, severity
-- **Throughput:** Até 585 logs/s (cenário 1M logs)
-- **Latência P50:** 3.62-246ms (varia com volume)
-
-### Arquitetura Tradicional
-- **Replicação streaming:** Síncrona para alta consistência
-- **Connection pooling:** Otimizado para concorrência Go
-- **Índices PostgreSQL:** B-tree em colunas críticas
-- **Prepared statements:** Queries pré-compiladas
-- **Throughput:** Até 977 logs/s (cenário 1M logs)
-- **Latência P50:** 1.34-4.49ms
-- **Trade-off:** 38.17% perda de dados em falha primária (sem WAL)
-
-## Testes de Tolerância a Falhas
-
-```bash
-cd testing
-./run_fault_tolerance.sh
-```
-
-Cenários testados:
-- **Falha primário PostgreSQL:** 38.17% perda de dados (sem WAL)
-- **Falha rede Fabric:** 0% perda de dados (WAL protege)
-- **Falha MongoDB:** 0% perda de dados (WAL + replicação)
-- **Recuperação:** Tempo de failover < 10s
-
-### Resultados Comparativos
-
-| Métrica | PostgreSQL | Híbrida (MongoDB + Fabric) |
-|---------|------------|----------------------------|
-| **Throughput máx** | 977 logs/s | 585 logs/s |
-| **Latência P50** | 1.34-4.49ms | 3.62-246ms |
-| **CPU médio** | 0.4-0.83% | 0.57-30.37% |
-| **RAM médio** | 122-138 MB | 77-121 MB |
-| **Perda de dados** | 38.17% | 0% |
-| **Imutabilidade** | ❌ | ✅ (blockchain) |
-
-## Tecnologias Utilizadas
-
-### Backend
-- **Go 1.18:** Linguagem principal da API
-- **Gin Framework v1.9.1:** Router HTTP de alta performance
-- **fabric-sdk-go v1.0.0:** SDK oficial Hyperledger Fabric
-- **pgx v5.4:** Driver PostgreSQL nativo
-- **mongo-driver v1.13.4:** Driver MongoDB oficial
-- **gopsutil v3.23:** Monitoramento de recursos
-
-### Blockchain & Databases
-- **Hyperledger Fabric v2.4:** Blockchain permissionada
-- **MongoDB v7.0:** Banco NoSQL para logs
-- **PostgreSQL v15:** Banco relacional tradicional
-- **CouchDB:** State database do Fabric
-
-### DevOps & Análise
-- **Docker 24.x:** Containerização
-- **Python 3.10:** Scripts de análise
-- **Pandas v2.0:** Processamento de dados
-- **Matplotlib v3.7:** Visualização de gráficos
-
-## Licença
-
-Este projeto está licenciado sob a Licença Apache 2.0 - veja o arquivo [LICENSE](LICENSE) para detalhes.
+Apache 2.0 — see [LICENSE](LICENSE).

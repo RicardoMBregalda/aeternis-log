@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Script de teste do chaincode
+# Chaincode test script
 set -e
 
 echo "=========================================="
-echo "🧪 TESTANDO CHAINCODE LOGCHAINCODE"
+echo "Testing logchaincode"
 echo "=========================================="
 
 cd /opt/gopath/src/github.com/hyperledger/fabric/peer
 
-# Configuração
+# Configuration
 export CORE_PEER_TLS_ENABLED=true
 export CORE_PEER_LOCALMSPID='Org1MSP'
 export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
@@ -21,20 +21,20 @@ CHANNEL_NAME="logchannel"
 CHAINCODE_NAME="logchaincode"
 
 echo ""
-echo "📝 Teste 1: Criar um log de teste..."
+echo "Test 1: Create a test log..."
 peer chaincode invoke \
   -C $CHANNEL_NAME \
   -n $CHAINCODE_NAME \
-  -c '{"Args":["CreateLog","AUTO001","abc123hash","2025-10-16T22:00:00Z","init-script","INFO","Sistema inicializado automaticamente","{}",""]}' \
+  -c '{"Args":["CreateLog","AUTO001","abc123hash","2025-10-16T22:00:00Z","init-script","INFO","System initialized automatically","{}",""]}' \
   --tls \
   --cafile $ORDERER_CA
 
 echo ""
-echo "⏳ Aguardando transação ser processada..."
+echo "Waiting for the transaction to be processed..."
 sleep 3
 
 echo ""
-echo "📖 Teste 2: Consultar o log criado..."
+echo "Test 2: Query the created log..."
 peer chaincode query \
   -C $CHANNEL_NAME \
   -n $CHAINCODE_NAME \
@@ -42,5 +42,5 @@ peer chaincode query \
 
 echo ""
 echo "=========================================="
-echo "✅ TESTES CONCLUÍDOS!"
+echo "Tests complete"
 echo "=========================================="

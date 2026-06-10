@@ -1,0 +1,10 @@
+# Generated at runtime — never commit production-staging crypto material or ledgers
+organizations/
+crypto-config-prod/
+channel-artifacts/
+system-genesis-block/
+api-identity/
+backups/
+*.tar.gz
+*.block
+*.tx

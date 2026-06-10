@@ -1,21 +1,21 @@
 #!/bin/bash
 
 # ============================================
-# Script de Parada da Rede Fabric
+# Fabric Network Stop Script
 # ============================================
-# 
-# Para todos os containers e opcionalmente remove volumes.
 #
-# Uso: ./stop-network.sh [opção]
+# Stops all containers and optionally removes volumes.
 #
-# Opções:
-#   --clean     Para e remove todos os volumes (dados serão perdidos)
-#   (nenhuma)   Apenas para os containers (mantém volumes)
+# Usage: ./stop-network.sh [option]
+#
+# Options:
+#   --clean     Stop and remove all volumes (data will be lost)
+#   (none)      Only stop the containers (keeps volumes)
 #
 
 set -e
 
-# Cores
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -23,55 +23,55 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}[OK] $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    echo -e "${YELLOW}[WARNING] $1${NC}"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+    echo -e "${BLUE}[INFO] $1${NC}"
 }
 
-# Diretório do script
+# Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Verificar opção --clean
+# Check the --clean option
 if [ "$1" == "--clean" ]; then
-    print_warning "ATENÇÃO: Modo --clean irá remover TODOS os volumes!"
-    print_warning "Todos os dados da blockchain serão PERDIDOS!"
+    print_warning "The --clean mode will remove ALL volumes."
+    print_warning "All blockchain data will be lost."
     echo ""
-    read -p "Tem certeza que deseja continuar? (s/N): " -n 1 -r
+    read -p "Are you sure you want to continue? (y/N): " -n 1 -r
     echo ""
-    
-    if [[ ! $REPLY =~ ^[Ss]$ ]]; then
-        print_info "Operação cancelada"
+
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Operation cancelled"
         exit 0
     fi
-    
+
     echo ""
-    print_info "Parando containers e removendo volumes..."
+    print_info "Stopping containers and removing volumes..."
     docker-compose down -v
-    print_success "Containers parados e volumes removidos"
-    
-    # Limpar artefatos locais
+    print_success "Containers stopped and volumes removed"
+
+    # Clean up local artifacts
     echo ""
-    print_info "Limpando artefatos locais..."
+    print_info "Cleaning up local artifacts..."
     rm -rf crypto-config/ 2>/dev/null || true
     rm -f config/genesis.block config/logchannel.tx 2>/dev/null || true
     rm -f *.block *.tar.gz 2>/dev/null || true
-    print_success "Artefatos locais removidos"
-    
+    print_success "Local artifacts removed"
+
 else
-    print_info "Parando containers..."
+    print_info "Stopping containers..."
     docker-compose down
-    print_success "Containers parados (volumes mantidos)"
-    
+    print_success "Containers stopped (volumes kept)"
+
     echo ""
-    print_info "Para remover volumes também, use: ./stop-network.sh --clean"
+    print_info "To also remove volumes, use: ./stop-network.sh --clean"
 fi
 
 echo ""
-print_success "Rede Fabric parada com sucesso!"
+print_success "Fabric network stopped successfully"

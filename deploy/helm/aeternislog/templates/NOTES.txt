@@ -1,0 +1,19 @@
+Anchor API deployed as release "{{ .Release.Name }}".
+
+API service: {{ include "aeternislog.fullname" . }}:{{ .Values.api.port }} (in-cluster)
+
+Port-forward and check health:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "aeternislog.fullname" . }} {{ .Values.api.port }}:{{ .Values.api.port }}
+  curl http://localhost:{{ .Values.api.port }}/health
+
+{{- if not .Values.fabric.identity.existingSecret }}
+{{- if not .Values.fabric.identity.signKey }}
+
+WARNING: no Fabric identity was provided. Set fabric.identity.signKey / signCert /
+tlsCaCert, or point fabric.identity.existingSecret at a pre-created secret, otherwise
+the API cannot connect to Fabric (sync_enabled={{ .Values.fabric.syncEnabled }}).
+{{- end }}
+{{- end }}
+
+The Fabric network is external to this cluster: fabric.peerEndpoint must be reachable
+from the pods and its TLS SAN must match fabric.serverNameOverride.

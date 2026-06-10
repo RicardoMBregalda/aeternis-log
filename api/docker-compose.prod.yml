@@ -1,0 +1,93 @@
+# Parallel API stack pointing at the production-staging Fabric network (Phase F).
+# Mirrors docker-compose.yml but on aeternislog_network_prod, with shifted host ports and
+# the Org1 identity issued by the prod Fabric CA. The dev API stack stays untouched.
+#
+#   docker compose -f docker-compose.prod.yml -p aeternislog-prod up -d --build
+#
+# The Fabric Gateway connects to peer0.org1 and collects the MAJORITY (2/3) endorsement
+# from Org2/Org3 automatically via service discovery — no client-side peer list needed.
+
+services:
+  go-api-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aeternislog-api:latest
+    container_name: aeternislog-api-prod
+    hostname: go-api-prod
+    mem_limit: 512m
+    cpus: 1.0
+    # Phase G hardening: run as the image's non-root uid (1000) and mount only the
+    # API's least-privilege identity bundle (built by build-api-identity.sh, owned
+    # 1000, key 0400) — no run-as-root, no whole-org-tree mount. Real prod should
+    # source the key from an HSM/PKCS#11 or a k8s/swarm secret (see runbook).
+    user: "1000:1000"
+    ports:
+      - "5002:5001"   # API port (dev uses 5001)
+      - "9091:9090"   # Metrics port (dev uses 9090)
+    volumes:
+      # Self-contained prod config: auth (per-tenant keys) + fabric (gateway, Org1
+      # identity, tenant_channels). See api/config.prod.yaml.
+      - ./config.prod.yaml:/app/config.yaml:ro
+      - wal-data-prod:/var/log/aeternislog-wal
+      # Least-privilege identity bundle (Phase G): only Org1's admin cert+key + peer
+      # TLS CA, owned by uid 1000. Built by prod/scripts/build-api-identity.sh.
+      - ../hybrid-architecture/fabric-network/prod/api-identity/org1:/fabric-identity:ro
+    environment:
+      - LOG_LEVEL=info
+    depends_on:
+      - mongodb-prod
+      - redis-prod
+    networks:
+      - prod-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  mongodb-prod:
+    image: mongo:7.0
+    container_name: aeternislog-mongodb-prod
+    hostname: mongodb-prod
+    mem_limit: 1g
+    cpus: 1.0
+    ports:
+      - "27018:27017"   # dev uses 27017
+    volumes:
+      - mongodb-data-prod:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=logdb
+    networks:
+      - prod-net
+    restart: unless-stopped
+
+  redis-prod:
+    image: redis:7-alpine
+    container_name: aeternislog-redis-prod
+    hostname: redis-prod
+    mem_limit: 512m
+    cpus: 0.5
+    ports:
+      - "6380:6379"     # dev uses 6379
+    volumes:
+      - redis-data-prod:/data
+    command: redis-server --appendonly yes --appendfsync always
+    networks:
+      - prod-net
+    restart: unless-stopped
+
+volumes:
+  mongodb-data-prod:
+    driver: local
+  redis-data-prod:
+    driver: local
+  wal-data-prod:
+    driver: local
+
+networks:
+  prod-net:
+    external: true
+    name: aeternislog_network_prod
