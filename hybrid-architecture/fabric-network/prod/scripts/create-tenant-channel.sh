@@ -11,7 +11,8 @@
 set -euo pipefail
 
 CHANNEL="${1:?usage: create-tenant-channel.sh <channel-id>}"
-FN_DIR="/root/aeternis-log/hybrid-architecture/fabric-network"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                # .../fabric-network
 PROD="$FN_DIR/prod"
 BLOCK="$PROD/channel-artifacts/${CHANNEL}.block"
 

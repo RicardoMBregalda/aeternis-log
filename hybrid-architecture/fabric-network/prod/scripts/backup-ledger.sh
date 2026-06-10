@@ -17,7 +17,8 @@
 #     sh -c 'rm -rf /var/hyperledger/production/* && tar xzf /backup/<node>.tar.gz -C /var/hyperledger/production'
 set -euo pipefail
 
-PROD="/root/aeternis-log/hybrid-architecture/fabric-network/prod"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROD="$(dirname "$SCRIPT_DIR")"                          # .../fabric-network/prod
 TS="$(date +%Y%m%d-%H%M%S)"
 BACKUP="$PROD/backups/$TS"
 mkdir -p "$BACKUP"

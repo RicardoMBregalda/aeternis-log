@@ -7,8 +7,11 @@
 # after a clean (rm -rf organizations/peerOrganizations organizations/ordererOrganizations).
 set -euo pipefail
 
-PROD="/root/aeternis-log/hybrid-architecture/fabric-network/prod"
-BIN="/root/aeternis-log/hybrid-architecture/fabric-network/bin"
+# Resolve repo paths from this script's own location (host-run), so it works
+# regardless of where the repository is checked out.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROD="$(dirname "$SCRIPT_DIR")"                          # .../fabric-network/prod
+BIN="$(dirname "$PROD")/bin"                             # .../fabric-network/bin
 FCA="$BIN/fabric-ca-client"
 ORGS="$PROD/organizations"
 PEERORGS="$ORGS/peerOrganizations"

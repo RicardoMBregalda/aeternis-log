@@ -13,7 +13,8 @@
 set -euo pipefail
 
 N="${1:-1}"
-PROD="/root/aeternis-log/hybrid-architecture/fabric-network/prod"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROD="$(dirname "$SCRIPT_DIR")"                          # .../fabric-network/prod
 DOMAIN="org${N}.example.com"
 SRC="$PROD/organizations/peerOrganizations/$DOMAIN"
 DST="$PROD/api-identity/org${N}"
