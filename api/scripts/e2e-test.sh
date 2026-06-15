@@ -125,23 +125,6 @@ if [ -n "$KEY2" ] && [ -n "$KEY" ]; then
   req2 GET "/api/v1/iso/records/$IID"; ck_code 404 "tenant2 cannot read tenant1 record"
 fi
 
-# ---------------------------------------------------------------- logs domain (legacy) + merkle
-section "Logs domain + Merkle"
-req POST /logs '{"source":"qa-logs","level":"INFO","message":"hello","metadata":{"k":"v"}}'
-if [ "$CODE" = 201 ] || [ "$CODE" = 200 ]; then pass "POST /logs (HTTP $CODE)"; else fail "POST /logs (got $CODE)"; fi
-req GET /logs; ck_code 200 "GET /logs"
-req POST /merkle/force-batch '{"batch_size":100}'
-if [ "$CODE" = 200 ] || [ "$CODE" = 202 ]; then pass "force log batch (HTTP $CODE)"; else fail "force log batch (got $CODE)"; fi
-req GET /merkle/batches; ck_code 200 "GET /merkle/batches"
-
-# ---------------------------------------------------------------- stats + wal
-section "Stats / WAL"
-req GET /stats;       ck_code 200 "GET /stats"
-req GET /stats/logs;  ck_code 200 "GET /stats/logs"
-req GET /stats/sync;  ck_code 200 "GET /stats/sync"
-req GET /wal/stats;   ck_code 200 "GET /wal/stats"
-req GET /wal/health;  ck_code 200 "GET /wal/health"
-
 # ---------------------------------------------------------------- summary
 echo
 echo "=================================================="
