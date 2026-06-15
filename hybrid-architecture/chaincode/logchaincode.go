@@ -283,8 +283,19 @@ func (s *SmartContract) StoreMerkleRoot(ctx contractapi.TransactionContextInterf
 		return err
 	}
 
-	// Store with key "batch_<batchID>"
+	// Anchors are WRITE-ONCE: a batch id may be anchored exactly once, so a
+	// re-submission (a retry, a second API replica, or a tampering attempt)
+	// cannot overwrite the original root. This is the immutability guarantee the
+	// product sells. Earlier values of a key remain retrievable via the ledger's
+	// built-in key history (GetHistoryForKey) if ever needed for audit.
 	key := "batch_" + batchID
+	existing, err := ctx.GetStub().GetState(key)
+	if err != nil {
+		return fmt.Errorf("failed to read existing batch: %v", err)
+	}
+	if existing != nil {
+		return fmt.Errorf("batch %s is already anchored and cannot be overwritten", batchID)
+	}
 	return ctx.GetStub().PutState(key, batchJSON)
 }
 
