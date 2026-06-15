@@ -174,7 +174,8 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.RequestID())
 	router.Use(middleware.RequestLogger())
-	router.Use(middleware.CORS())
+	router.Use(middleware.CORS(cfg.Server.CORSAllowedOrigins))
+	router.Use(middleware.MaxBodyBytes(cfg.Server.MaxBodyBytes))
 	router.Use(middleware.SecurityHeaders())
 	if cfg.Metrics.Enabled {
 		router.Use(metrics.Middleware())
@@ -307,6 +308,7 @@ func registerRoutes(
 
 	// Generic, domain-scoped records: /api/v1/{domain}/records
 	records := router.Group("/api/v1/:domain/records")
+	records.Use(middleware.ValidateDomain())
 	if authMW != nil {
 		records.Use(authMW)
 	}
@@ -321,6 +323,7 @@ func registerRoutes(
 
 	// Audit reports (per tenant/domain), behind auth like the data routes.
 	reports := router.Group("/api/v1/:domain")
+	reports.Use(middleware.ValidateDomain())
 	if authMW != nil {
 		reports.Use(authMW)
 	}
