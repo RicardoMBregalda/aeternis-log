@@ -3,6 +3,7 @@ package merkle
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -298,46 +299,94 @@ func (bp *BatchProcessor) processBatch(ctx context.Context, batchSize int) error
 	return nil
 }
 
-// VerifyBatch verifies a batch's integrity
+// anchoredRoot fetches the Merkle root anchored on-chain for a batch and reports
+// where it came from. It returns (root, AnchorAnchored) when the ledger holds the
+// batch, ("", AnchorUnanchored) when the ledger has no such batch, and
+// ("", AnchorUnknown) when Fabric is disabled or unreachable (so the caller can
+// fall back to a local check and disclose that the anchor was not consulted).
+func (bp *BatchProcessor) anchoredRoot(ctx context.Context, channel, batchID string) (string, string) {
+	if bp.fabricClient == nil || !bp.fabricClient.Config.SyncEnabled {
+		return "", models.AnchorUnknown
+	}
+	resp, err := bp.fabricClient.VerifyMerkleBatch(ctx, channel, batchID)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "does not exist") {
+			return "", models.AnchorUnanchored
+		}
+		zlog.Warn().Err(err).Str("batch_id", batchID).Str("channel", channel).
+			Msg("on-chain anchor lookup failed; verifying against local state only")
+		return "", models.AnchorUnknown
+	}
+	root, _ := resp.Data["merkle_root"].(string)
+	if root == "" {
+		return "", models.AnchorUnknown
+	}
+	return root, models.AnchorAnchored
+}
+
+// buildVerifyResponse decides integrity from the authoritative source. When the
+// batch is anchored, the on-chain root is the source of truth and the locally
+// stored root is irrelevant (this is what makes tampering both the content AND
+// the stored root detectable). When the ledger cannot be consulted, it falls
+// back to local consistency and says so via AnchorStatus.
+func buildVerifyResponse(batchID string, n int, storedRoot, recalculated, onChainRoot, anchorStatus string) *models.VerifyBatchResponse {
+	resp := &models.VerifyBatchResponse{
+		BatchID:                batchID,
+		NumLogs:                n,
+		OriginalMerkleRoot:     storedRoot,
+		RecalculatedMerkleRoot: recalculated,
+		OnChainMerkleRoot:      onChainRoot,
+		AnchorStatus:           anchorStatus,
+	}
+
+	switch anchorStatus {
+	case models.AnchorAnchored:
+		resp.IsValid = recalculated == onChainRoot
+		if resp.IsValid {
+			resp.Integrity = models.IntegrityValid
+			resp.Message = "Batch integrity verified against the on-chain anchor"
+		} else {
+			resp.Integrity = models.IntegrityCorrupted
+			resp.Message = "Recomputed Merkle root does not match the on-chain anchor"
+		}
+	case models.AnchorUnanchored:
+		resp.IsValid = false
+		resp.Integrity = models.IntegrityUnanchored
+		resp.Message = "Batch is not anchored on the ledger; integrity cannot be proven"
+	default: // AnchorUnknown
+		resp.IsValid = storedRoot == recalculated
+		if resp.IsValid {
+			resp.Integrity = models.IntegrityValid
+		} else {
+			resp.Integrity = models.IntegrityCorrupted
+		}
+		resp.Message = "Ledger not consulted (anchor status unknown); local consistency only"
+	}
+	return resp
+}
+
+// VerifyBatch verifies a log batch's integrity against the on-chain anchor.
 func (bp *BatchProcessor) VerifyBatch(ctx context.Context, batchID string) (*models.VerifyBatchResponse, error) {
-	// Find logs in batch
 	logs, err := bp.collections.FindLogsByBatchID(ctx, batchID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find logs: %w", err)
 	}
-
 	if len(logs) == 0 {
 		return nil, fmt.Errorf("batch not found: %s", batchID)
 	}
 
-	// Get original Merkle root
-	originalMerkleRoot := logs[0].MerkleRoot
+	storedRoot := logs[0].MerkleRoot
+	recalculated, _ := models.CalculateMerkleRoot(logs)
 
-	// Recalculate Merkle root
-	recalculatedMerkleRoot, _ := models.CalculateMerkleRoot(logs)
-
-	// Compare
-	isValid := originalMerkleRoot == recalculatedMerkleRoot
-	metrics.RecordVerification("logs", isValid)
-
-	integrity := "VALID"
-	message := "Batch integrity verified successfully"
-	if !isValid {
-		integrity = "CORRUPTED"
-		message = "Batch integrity check failed - Merkle root mismatch"
+	channel := ""
+	if bp.fabricClient != nil {
+		channel = bp.fabricClient.Config.ChannelForTenant("default")
 	}
+	onChainRoot, anchorStatus := bp.anchoredRoot(ctx, channel, batchID)
 
-	response := &models.VerifyBatchResponse{
-		BatchID:                batchID,
-		IsValid:                isValid,
-		NumLogs:                len(logs),
-		OriginalMerkleRoot:     originalMerkleRoot,
-		RecalculatedMerkleRoot: recalculatedMerkleRoot,
-		Integrity:              integrity,
-		Message:                message,
-	}
-
-	return response, nil
+	resp := buildVerifyResponse(batchID, len(logs), storedRoot, recalculated, onChainRoot, anchorStatus)
+	metrics.RecordVerification("logs", resp.IsValid)
+	return resp, nil
 }
 
 // GetBatch retrieves a batch with its logs
@@ -452,27 +501,18 @@ func (bp *BatchProcessor) VerifyRecordBatch(ctx context.Context, tenant, domain,
 		return nil, fmt.Errorf("batch not found: %s/%s/%s", tenant, domain, batchID)
 	}
 
-	original := records[0].MerkleRoot
+	storedRoot := records[0].MerkleRoot
 	recalculated, _ := models.CalculateRecordMerkleRoot(records)
-	isValid := original == recalculated
-	metrics.RecordVerification(domain, isValid)
 
-	integrity := "VALID"
-	message := "Batch integrity verified successfully"
-	if !isValid {
-		integrity = "CORRUPTED"
-		message = "Batch integrity check failed - Merkle root mismatch"
+	channel := ""
+	if bp.fabricClient != nil {
+		channel = bp.fabricClient.Config.ChannelForTenant(tenant)
 	}
+	onChainRoot, anchorStatus := bp.anchoredRoot(ctx, channel, batchID)
 
-	return &models.VerifyBatchResponse{
-		BatchID:                batchID,
-		IsValid:                isValid,
-		NumLogs:                len(records),
-		OriginalMerkleRoot:     original,
-		RecalculatedMerkleRoot: recalculated,
-		Integrity:              integrity,
-		Message:                message,
-	}, nil
+	resp := buildVerifyResponse(batchID, len(records), storedRoot, recalculated, onChainRoot, anchorStatus)
+	metrics.RecordVerification(domain, resp.IsValid)
+	return resp, nil
 }
 
 // ListBatches lists all batches
