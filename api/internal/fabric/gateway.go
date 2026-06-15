@@ -164,7 +164,14 @@ func (b *gatewayBackend) Invoke(_ context.Context, channel, function string, arg
 	if err != nil {
 		return nil, fmt.Errorf("failed to submit transaction: %w", err)
 	}
-	if status, serr := commit.Status(); serr == nil && !status.Successful {
+	// A commit-status error (timeout, dropped connection) means the outcome is
+	// UNKNOWN — it must not be reported as a successful anchor. Treat it as a
+	// failure so the caller (and the reconciler) can re-drive the batch.
+	status, serr := commit.Status()
+	if serr != nil {
+		return nil, fmt.Errorf("failed to obtain commit status for transaction %s: %w", transaction.TransactionID(), serr)
+	}
+	if !status.Successful {
 		return nil, fmt.Errorf("transaction %s failed to commit (validation code %v)", status.TransactionID, status.Code)
 	}
 

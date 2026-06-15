@@ -39,15 +39,37 @@ type CreateBatchResponse struct {
 	Message    string   `json:"message"`
 }
 
-// VerifyBatchResponse represents the response from batch verification
+// Integrity outcomes reported by batch verification.
+const (
+	IntegrityValid      = "VALID"      // recomputed root matches the authoritative anchor
+	IntegrityCorrupted  = "CORRUPTED"  // recomputed root does NOT match the anchor
+	IntegrityUnanchored = "UNANCHORED" // the batch is not (yet) anchored on the ledger
+)
+
+// Anchor status: where the authoritative Merkle root was (or wasn't) read from.
+const (
+	AnchorAnchored   = "ANCHORED" // root read from the on-chain ledger (authoritative)
+	AnchorUnanchored = "UNANCHORED"
+	AnchorUnknown    = "UNKNOWN" // ledger unavailable or sync disabled — on-chain proof not consulted
+)
+
+// VerifyBatchResponse represents the response from batch verification.
+//
+// Integrity is decided against OnChainMerkleRoot when AnchorStatus == ANCHORED
+// (the ledger is the source of truth). When the ledger cannot be consulted
+// (AnchorStatus == UNKNOWN) the result falls back to a local-consistency check
+// between OriginalMerkleRoot and RecalculatedMerkleRoot, and the caller is told
+// the on-chain anchor was not read.
 type VerifyBatchResponse struct {
-	BatchID               string `json:"batch_id"`
-	IsValid               bool   `json:"is_valid"`
-	NumLogs               int    `json:"num_logs"`
-	OriginalMerkleRoot    string `json:"original_merkle_root"`
+	BatchID                string `json:"batch_id"`
+	IsValid                bool   `json:"is_valid"`
+	NumLogs                int    `json:"num_logs"`
+	OriginalMerkleRoot     string `json:"original_merkle_root"`
 	RecalculatedMerkleRoot string `json:"recalculated_merkle_root"`
-	Integrity             string `json:"integrity"`
-	Message               string `json:"message"`
+	OnChainMerkleRoot      string `json:"on_chain_merkle_root,omitempty"`
+	AnchorStatus           string `json:"anchor_status"`
+	Integrity              string `json:"integrity"`
+	Message                string `json:"message"`
 }
 
 // ListBatchesResponse represents the response for listing batches
