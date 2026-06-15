@@ -19,6 +19,19 @@ falta para produção real (multi-host)** — onde o gargalo é infra/governanç
   orderers). Reduz tanto o privilégio do processo quanto a superfície do mount.
 - Crypto e bundles **fora do git** (`.gitignore`: `organizations/`, `api-identity/`,
   `*.block`, `*.tar.gz`).
+- **API keys e webhook secret em Secret, não em ConfigMap (F05).** O chart Helm
+  renderiza `auth.apiKeys`, as chaves de cada tenant e `webhook.secret` num
+  **Kubernetes Secret** (`<release>-secrets`), injetado na API via `envFrom`
+  (`AUTH_API_KEYS` / `AUTH_TENANTS` / `WEBHOOK_SECRET`) — nunca no ConfigMap.
+  Uma chave pode ser **plaintext** ou um **hash `sha256:<hex>`**
+  (`printf '%s' "$KEY" | sha256sum`), de modo que a chave crua não precisa ficar
+  em repouso. Alterar o Secret rola os pods (`checksum/secret`).
+
+### Rotação de API keys (sem downtime)
+1. Gere a nova chave; adicione-a ao tenant **junto** da antiga (`keys: [old, new]`).
+2. `helm upgrade` → o `checksum/secret` rola os pods; ambas as chaves ficam válidas.
+3. Migre os clientes para a nova chave.
+4. Remova a antiga (`keys: [new]`) e `helm upgrade` novamente.
 
 ### Para produção real ⬜
 - **Chaves nunca em disco do app.** Provisionar a chave de assinatura via:

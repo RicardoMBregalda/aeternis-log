@@ -80,10 +80,8 @@ data:
     auth:
       enabled: {{ .Values.auth.enabled }}
       header_name: "{{ .Values.auth.headerName }}"
-      api_keys:
-        {{- toYaml .Values.auth.apiKeys | nindent 8 }}
-      tenants:
-        {{- toYaml .Values.auth.tenants | nindent 8 }}
+      # api_keys and tenants are injected from the app Secret via the
+      # AUTH_API_KEYS / AUTH_TENANTS env vars — never rendered into this ConfigMap.
     rate_limit:
       enabled: {{ .Values.rateLimit.enabled }}
       max_requests: {{ .Values.rateLimit.maxRequests }}
@@ -91,6 +89,6 @@ data:
     webhook:
       enabled: {{ .Values.webhook.enabled }}
       url: "{{ .Values.webhook.url }}"
-      secret: "{{ .Values.webhook.secret }}"
+      # secret is injected from the app Secret via the WEBHOOK_SECRET env var.
       timeout: 5s
       max_retries: 3

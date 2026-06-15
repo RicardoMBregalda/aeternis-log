@@ -121,3 +121,19 @@ func TestSplitAndTrim(t *testing.T) {
 		t.Error("empty input should yield no items")
 	}
 }
+
+func TestParseTenants(t *testing.T) {
+	got := parseTenants("acme:k1,k2 ; globex:k3 ; :nokeyless ; malformed ; empty:")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 valid tenants, got %d: %+v", len(got), got)
+	}
+	if got[0].ID != "acme" || len(got[0].Keys) != 2 || got[0].Keys[0] != "k1" || got[0].Keys[1] != "k2" {
+		t.Errorf("tenant acme parsed wrong: %+v", got[0])
+	}
+	if got[1].ID != "globex" || len(got[1].Keys) != 1 || got[1].Keys[0] != "k3" {
+		t.Errorf("tenant globex parsed wrong: %+v", got[1])
+	}
+	if parseTenants("") != nil {
+		t.Error("empty input should yield nil")
+	}
+}

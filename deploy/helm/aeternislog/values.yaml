@@ -38,13 +38,19 @@ rateLimit:
   window: 1m
 
 # API-key auth. Tenants resolve from their key; flat apiKeys -> tenant "default".
+# apiKeys and tenant keys are rendered into a Kubernetes Secret (NOT the
+# ConfigMap) and injected as env vars. A key may be a plaintext value or a
+# "sha256:<hex>" hash of the key, so the raw key need never be stored at rest:
+#   printf '%s' "$KEY" | sha256sum   ->   sha256:<hex>
+# Rotation: list both the old and new key during the overlap window, then drop
+# the old one (a config change rolls the pods via checksum/secret).
 auth:
   enabled: false
   headerName: X-API-Key
   apiKeys: []
   tenants: []
   #  - id: acme
-  #    keys: ["acme-key"]
+  #    keys: ["acme-key"]            # or ["sha256:<hex>"]
 
 fabric:
   syncEnabled: true
@@ -70,6 +76,8 @@ fabric:
     signKey: ""          # PEM of the client signing key (SENSITIVE)
 
 # Webhook fired when a batch is anchored (optional).
+# secret is rendered into the app Secret (not the ConfigMap) and injected as the
+# WEBHOOK_SECRET env var; it signs the callback payload (HMAC-SHA256).
 webhook:
   enabled: false
   url: ""

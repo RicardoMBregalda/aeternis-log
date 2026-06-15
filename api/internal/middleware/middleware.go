@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -184,14 +186,25 @@ func APIKeyAuth(headerName string, keyToTenant map[string]string) gin.HandlerFun
 	}
 }
 
-// matchAPIKey returns the tenant for a presented key. It checks every key (no
-// early return) and uses a constant-time comparison so the response timing does
-// not leak key contents.
+// matchAPIKey returns the tenant for a presented key. It checks every configured
+// key (no early return) with a constant-time comparison so response timing does
+// not leak key contents. A configured key may be a plaintext value or a
+// "sha256:<hex>" hash of the key — the latter lets operators avoid storing the
+// raw key at rest (the presented key is hashed and compared in constant time).
 func matchAPIKey(presented string, keyToTenant map[string]string) (string, bool) {
+	sum := sha256.Sum256([]byte(presented))
+	presentedHash := hex.EncodeToString(sum[:])
+
 	tenant := ""
 	match := false
 	for key, t := range keyToTenant {
-		if subtle.ConstantTimeCompare([]byte(presented), []byte(key)) == 1 {
+		var equal bool
+		if h, ok := strings.CutPrefix(key, "sha256:"); ok {
+			equal = subtle.ConstantTimeCompare([]byte(presentedHash), []byte(h)) == 1
+		} else {
+			equal = subtle.ConstantTimeCompare([]byte(presented), []byte(key)) == 1
+		}
+		if equal {
 			tenant = t
 			match = true
 		}

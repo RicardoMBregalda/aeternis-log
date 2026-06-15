@@ -38,3 +38,17 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-fabric-identity" (include "aeternislog.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{/* Name of the Secret holding API auth keys and the webhook secret. */}}
+{{- define "aeternislog.appSecret" -}}
+{{- printf "%s-secrets" (include "aeternislog.fullname" .) -}}
+{{- end -}}
+
+{{/* Render auth.tenants as the AUTH_TENANTS env format: "id:k1,k2;id2:k3". */}}
+{{- define "aeternislog.tenantsEnv" -}}
+{{- $parts := list -}}
+{{- range .Values.auth.tenants -}}
+{{- $parts = append $parts (printf "%s:%s" .id (join "," .keys)) -}}
+{{- end -}}
+{{- join ";" $parts -}}
+{{- end -}}
