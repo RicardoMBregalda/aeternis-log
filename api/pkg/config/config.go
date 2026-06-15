@@ -83,6 +83,11 @@ type ServerConfig struct {
 	ReadTimeout     time.Duration `yaml:"read_timeout"`
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+	// MaxBodyBytes caps the accepted request body size (0 disables the cap).
+	MaxBodyBytes int64 `yaml:"max_body_bytes"`
+	// CORSAllowedOrigins is the allowlist of browser origins. "*" allows any
+	// origin but disables credentialed CORS (the invalid "*"+credentials combo).
+	CORSAllowedOrigins []string `yaml:"cors_allowed_origins"`
 }
 
 // MongoDBConfig holds MongoDB connection configuration
@@ -219,12 +224,14 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Default configuration
 	config := &Config{
 		Server: ServerConfig{
-			Host:            "0.0.0.0",
-			Port:            5001,
-			Debug:           false,
-			ReadTimeout:     30 * time.Second,
-			WriteTimeout:    30 * time.Second,
-			ShutdownTimeout: 10 * time.Second,
+			Host:               "0.0.0.0",
+			Port:               5001,
+			Debug:              false,
+			ReadTimeout:        30 * time.Second,
+			WriteTimeout:       30 * time.Second,
+			ShutdownTimeout:    10 * time.Second,
+			MaxBodyBytes:       1 << 20, // 1 MiB
+			CORSAllowedOrigins: []string{"*"},
 		},
 		MongoDB: MongoDBConfig{
 			URL:                       "mongodb://localhost:27017",
@@ -368,6 +375,16 @@ func overrideFromEnv(config *Config) {
 	}
 	if val := os.Getenv("SERVER_DEBUG"); val != "" {
 		config.Server.Debug = val == "true"
+	}
+	if val := os.Getenv("SERVER_MAX_BODY_BYTES"); val != "" {
+		if n, err := strconv.ParseInt(val, 10, 64); err == nil {
+			config.Server.MaxBodyBytes = n
+		}
+	}
+	if val := os.Getenv("SERVER_CORS_ALLOWED_ORIGINS"); val != "" {
+		if origins := splitAndTrim(val, ","); len(origins) > 0 {
+			config.Server.CORSAllowedOrigins = origins
+		}
 	}
 
 	// MongoDB
