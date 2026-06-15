@@ -17,8 +17,6 @@ import (
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/merkle"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/metrics"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/middleware"
-	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
-	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/wal"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/webhook"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 
@@ -109,29 +107,6 @@ func main() {
 		lg.Warn().Msg("Redis cache disabled (graceful degradation)")
 	}
 
-	// Write-Ahead Log ----------------------------------------------------
-	insertCallback := func(logEntry *models.Log) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return collections.InsertLog(ctx, logEntry)
-	}
-
-	walInstance, err := wal.New(&cfg.WAL, redisCache.Client)
-	if err != nil {
-		lg.Warn().Err(err).Msg("failed to create WAL, durability guarantees disabled")
-		walInstance = wal.NoopWAL{}
-	}
-	if cfg.WAL.Enabled {
-		walInstance.StartProcessor(insertCallback)
-		lg.Info().
-			Str("backend", cfg.WAL.Backend).
-			Str("directory", cfg.WAL.Directory).
-			Msg("WAL processor started")
-	} else {
-		lg.Warn().Msg("WAL disabled")
-	}
-	defer walInstance.StopProcessor()
-
 	// Fabric -------------------------------------------------------------
 	fabricClient, err := fabric.NewFabricClient(&cfg.Fabric)
 	if err != nil {
@@ -203,15 +178,11 @@ func main() {
 	}
 
 	healthHandler := handlers.NewHealthHandler(mongoClient, collections, redisCache, fabricClient, batchProcessor, Version, BuildTime)
-	logHandler := handlers.NewLogHandler(collections, redisCache, walInstance)
 	recordHandler := handlers.NewRecordHandler(collections, batchProcessor)
-	merkleHandler := handlers.NewMerkleHandler(batchProcessor, redisCache)
-	walHandler := handlers.NewWALHandler(walInstance)
-	statsHandler := handlers.NewStatsHandler(collections, mongoClient, redisCache, fabricClient, batchProcessor, walInstance)
 	publicHandler := handlers.NewPublicHandler(fabricClient, cfg.Fabric.Channel)
 	reportHandler := handlers.NewReportHandler(collections)
 
-	registerRoutes(router, authMW, healthHandler, logHandler, recordHandler, merkleHandler, walHandler, statsHandler, publicHandler, reportHandler)
+	registerRoutes(router, authMW, healthHandler, recordHandler, publicHandler, reportHandler)
 
 	srv := &http.Server{
 		Addr:         cfg.GetServerAddr(),
@@ -273,16 +244,12 @@ func main() {
 }
 
 // registerRoutes registers all API routes. authMW, when non-nil, protects the
-// data routes (logs, merkle, wal, stats); health, root and swagger stay open.
+// domain-scoped record and report routes; health, root and swagger stay open.
 func registerRoutes(
 	router *gin.Engine,
 	authMW gin.HandlerFunc,
 	healthHandler *handlers.HealthHandler,
-	logHandler *handlers.LogHandler,
 	recordHandler *handlers.RecordHandler,
-	merkleHandler *handlers.MerkleHandler,
-	walHandler *handlers.WALHandler,
-	statsHandler *handlers.StatsHandler,
 	publicHandler *handlers.PublicHandler,
 	reportHandler *handlers.ReportHandler,
 ) {
@@ -332,49 +299,6 @@ func registerRoutes(
 		reports.GET("/report.pdf", reportHandler.AuditReportPDF)
 	}
 
-	logs := router.Group("/logs")
-	if authMW != nil {
-		logs.Use(authMW)
-	}
-	{
-		logs.POST("", logHandler.CreateLog)
-		logs.GET("", logHandler.GetLogs)
-		logs.GET("/:id", logHandler.GetLogByID)
-		logs.DELETE("/:id", logHandler.DeleteLog)
-	}
-
-	merkleGroup := router.Group("/merkle")
-	if authMW != nil {
-		merkleGroup.Use(authMW)
-	}
-	{
-		merkleGroup.POST("/batch", merkleHandler.CreateBatch)
-		merkleGroup.GET("/batch/:id", merkleHandler.GetBatch)
-		merkleGroup.POST("/verify/:id", merkleHandler.VerifyBatch)
-		merkleGroup.GET("/batches", merkleHandler.ListBatches)
-		merkleGroup.GET("/stats", merkleHandler.GetBatchStats)
-		merkleGroup.POST("/force-batch", merkleHandler.ForceBatch)
-	}
-
-	walGroup := router.Group("/wal")
-	if authMW != nil {
-		walGroup.Use(authMW)
-	}
-	{
-		walGroup.GET("/stats", walHandler.GetStats)
-		walGroup.POST("/force-process", walHandler.ForceProcess)
-		walGroup.GET("/health", walHandler.GetHealth)
-	}
-
-	stats := router.Group("/stats")
-	if authMW != nil {
-		stats.Use(authMW)
-	}
-	{
-		stats.GET("", statsHandler.GetStats)
-		stats.GET("/logs", statsHandler.GetLogStats)
-		stats.GET("/sync", statsHandler.GetSyncStats)
-	}
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }

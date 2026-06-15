@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 // logCursor is the opaque keyset pagination cursor: the (created_at, id) of the
@@ -29,4 +31,14 @@ func decodeCursor(s string) (logCursor, error) {
 	}
 	err = json.Unmarshal(raw, &cur)
 	return cur, err
+}
+
+// cloneFilter returns a shallow copy of a bson.M filter so cursor predicates can
+// be added without mutating the base filter used for the total count.
+func cloneFilter(m bson.M) bson.M {
+	out := make(bson.M, len(m)+1)
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
