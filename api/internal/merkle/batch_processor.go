@@ -17,36 +17,27 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
-// BatchProcessor handles automatic batching and Merkle tree generation
+// BatchProcessor batches pending records, builds their Merkle tree and anchors
+// the root on Fabric — automatically (auto-batch ticker) or on demand.
 type BatchProcessor struct {
-	collections   *database.Collections
-	fabricClient  *fabric.FabricClient
-	config        *config.BatchingConfig
-	notifier      *webhook.Notifier
+	collections  *database.Collections
+	fabricClient *fabric.FabricClient
+	config       *config.BatchingConfig
+	notifier     *webhook.Notifier
 
-	// Worker pool
-	workers       int
-	jobQueue      chan *BatchJob
-	stopChan      chan struct{}
-	wg            sync.WaitGroup
-	running       bool
-	mu            sync.RWMutex
-	
-	// Statistics
-	stats         *ProcessorStats
-	statsMu       sync.RWMutex
-}
+	stopChan chan struct{}
+	wg       sync.WaitGroup
+	running  bool
+	mu       sync.RWMutex
 
-// BatchJob represents a batching job
-type BatchJob struct {
-	BatchSize int
-	Context   context.Context
+	stats   *ProcessorStats
+	statsMu sync.RWMutex
 }
 
 // ProcessorStats holds processor statistics
 type ProcessorStats struct {
 	TotalBatches     int       `json:"total_batches"`
-	TotalLogs        int       `json:"total_logs"`
+	TotalRecords     int       `json:"total_records"`
 	FailedBatches    int       `json:"failed_batches"`
 	LastBatchTime    time.Time `json:"last_batch_time"`
 	LastBatchSize    int       `json:"last_batch_size"`
@@ -56,17 +47,10 @@ type ProcessorStats struct {
 
 // NewBatchProcessor creates a new batch processor
 func NewBatchProcessor(collections *database.Collections, fabricClient *fabric.FabricClient, cfg *config.BatchingConfig) *BatchProcessor {
-	workers := cfg.BatchExecutorWorkers
-	if workers <= 0 {
-		workers = 5
-	}
-
 	return &BatchProcessor{
 		collections:  collections,
 		fabricClient: fabricClient,
 		config:       cfg,
-		workers:      workers,
-		jobQueue:     make(chan *BatchJob, 100),
 		stopChan:     make(chan struct{}),
 		stats:        &ProcessorStats{},
 	}
@@ -104,12 +88,6 @@ func (bp *BatchProcessor) Start(ctx context.Context) error {
 
 	bp.running = true
 
-	// Start worker pool
-	for i := 0; i < bp.workers; i++ {
-		bp.wg.Add(1)
-		go bp.worker(ctx, i)
-	}
-
 	// Start auto-batch ticker if enabled
 	if bp.config.Enabled && bp.config.AutoBatchInterval > 0 {
 		bp.wg.Add(1)
@@ -143,26 +121,7 @@ func (bp *BatchProcessor) Stop(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		return fmt.Errorf("timeout waiting for workers to stop")
-	}
-}
-
-// worker processes batch jobs
-func (bp *BatchProcessor) worker(ctx context.Context, workerID int) {
-	defer bp.wg.Done()
-
-	for {
-		select {
-		case <-bp.stopChan:
-			return
-		case <-ctx.Done():
-			return
-		case job := <-bp.jobQueue:
-			if err := bp.processBatch(job.Context, job.BatchSize); err != nil {
-				bp.incrementError()
-				zlog.Error().Err(err).Int("worker", workerID).Msg("batch processing error")
-			}
-		}
+		return fmt.Errorf("timeout waiting for batch processor to stop")
 	}
 }
 
@@ -180,16 +139,6 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Submit auto-batch job for logs.
-			select {
-			case bp.jobQueue <- &BatchJob{
-				BatchSize: bp.config.AutoBatchSize,
-				Context:   ctx,
-			}:
-			default:
-				// Queue is full, skip this tick
-			}
-
 			// Auto-batch pending records per (tenant, domain); each anchored to Fabric.
 			if scopes, err := bp.collections.DistinctPendingRecordScopes(ctx); err == nil {
 				for _, s := range scopes {
@@ -200,103 +149,6 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 			}
 		}
 	}
-}
-
-// ProcessBatch submits a batch job for processing
-func (bp *BatchProcessor) ProcessBatch(ctx context.Context, batchSize int) error {
-	bp.mu.RLock()
-	if !bp.running {
-		bp.mu.RUnlock()
-		return fmt.Errorf("batch processor not running")
-	}
-	bp.mu.RUnlock()
-
-	if batchSize <= 0 {
-		batchSize = bp.config.AutoBatchSize
-	}
-
-	// The job is processed asynchronously by a worker, so it must NOT inherit
-	// the caller's (HTTP request) context — that gets cancelled as soon as the
-	// handler returns, which would kill the in-flight batch. Only the enqueue
-	// below is gated by the caller's context.
-	job := &BatchJob{
-		BatchSize: batchSize,
-		Context:   context.Background(),
-	}
-
-	select {
-	case bp.jobQueue <- job:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		return fmt.Errorf("job queue is full")
-	}
-}
-
-// processBatch processes a single batch
-func (bp *BatchProcessor) processBatch(ctx context.Context, batchSize int) error {
-	startTime := time.Now()
-
-	// Find logs without batch
-	logs, err := bp.collections.FindLogsWithoutBatch(ctx, batchSize)
-	if err != nil {
-		return fmt.Errorf("failed to find logs: %w", err)
-	}
-
-	if len(logs) == 0 {
-		return nil // No logs to batch
-	}
-
-	// Generate batch ID
-	batchID := fmt.Sprintf("batch_%s", uuid.New().String()[:8])
-
-	// Calculate Merkle root
-	merkleRoot, _ := models.CalculateMerkleRoot(logs)
-
-	// Extract log IDs
-	logIDs := make([]string, len(logs))
-	for i, log := range logs {
-		logIDs[i] = log.ID
-	}
-
-	// Update logs with batch information
-	if err := bp.collections.UpdateLogBatch(ctx, logIDs, batchID, merkleRoot); err != nil {
-		return fmt.Errorf("failed to update logs: %w", err)
-	}
-
-	// Store batch in Fabric blockchain
-	if bp.fabricClient != nil {
-		fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-
-		channel := bp.fabricClient.Config.ChannelForTenant("default")
-		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, channel, batchID, merkleRoot, len(logs), logIDs)
-		if err != nil {
-			bp.incrementFailedBatch()
-			return fmt.Errorf("failed to store batch in Fabric: %w", err)
-		}
-
-		// Update sync control status
-		if err := bp.collections.UpdateSyncStatusBatch(ctx, logIDs, models.SyncStatusSynced, batchID); err != nil {
-			return fmt.Errorf("failed to update sync status: %w", err)
-		}
-
-		bp.notifyAnchored("default", "logs", batchID, merkleRoot, len(logs), inv.TxID)
-		metrics.RecordAnchoredBatch("default", "logs", len(logs))
-	}
-
-	// Update statistics
-	bp.updateStats(batchID, len(logs), startTime)
-
-	zlog.Info().
-		Str("batch_id", batchID).
-		Int("logs", len(logs)).
-		Str("merkle_root", merkleRoot).
-		Dur("took", time.Since(startTime)).
-		Msg("batch created")
-
-	return nil
 }
 
 // anchoredRoot fetches the Merkle root anchored on-chain for a batch and reports
@@ -363,59 +215,6 @@ func buildVerifyResponse(batchID string, n int, storedRoot, recalculated, onChai
 		resp.Message = "Ledger not consulted (anchor status unknown); local consistency only"
 	}
 	return resp
-}
-
-// VerifyBatch verifies a log batch's integrity against the on-chain anchor.
-func (bp *BatchProcessor) VerifyBatch(ctx context.Context, batchID string) (*models.VerifyBatchResponse, error) {
-	logs, err := bp.collections.FindLogsByBatchID(ctx, batchID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find logs: %w", err)
-	}
-	if len(logs) == 0 {
-		return nil, fmt.Errorf("batch not found: %s", batchID)
-	}
-
-	storedRoot := logs[0].MerkleRoot
-	recalculated, _ := models.CalculateMerkleRoot(logs)
-
-	channel := ""
-	if bp.fabricClient != nil {
-		channel = bp.fabricClient.Config.ChannelForTenant("default")
-	}
-	onChainRoot, anchorStatus := bp.anchoredRoot(ctx, channel, batchID)
-
-	resp := buildVerifyResponse(batchID, len(logs), storedRoot, recalculated, onChainRoot, anchorStatus)
-	metrics.RecordVerification("logs", resp.IsValid)
-	return resp, nil
-}
-
-// GetBatch retrieves a batch with its logs
-func (bp *BatchProcessor) GetBatch(ctx context.Context, batchID string) (*models.GetBatchResponse, error) {
-	// Find logs in batch
-	logs, err := bp.collections.FindLogsByBatchID(ctx, batchID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find logs: %w", err)
-	}
-
-	if len(logs) == 0 {
-		return nil, fmt.Errorf("batch not found: %s", batchID)
-	}
-
-	// Build batch info
-	logIDs := make([]string, len(logs))
-	for i, log := range logs {
-		logIDs[i] = log.ID
-	}
-
-	batch := models.NewMerkleBatch(batchID, logs[0].MerkleRoot, len(logs), logIDs)
-
-	response := &models.GetBatchResponse{
-		Batch:   batch,
-		Logs:    logs,
-		NumLogs: len(logs),
-	}
-
-	return response, nil
 }
 
 // ProcessRecordBatch batches up to batchSize pending records in a domain,
@@ -515,21 +314,6 @@ func (bp *BatchProcessor) VerifyRecordBatch(ctx context.Context, tenant, domain,
 	return resp, nil
 }
 
-// ListBatches lists all batches
-func (bp *BatchProcessor) ListBatches(ctx context.Context) (*models.ListBatchesResponse, error) {
-	batches, err := bp.collections.AggregateBatches(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to aggregate batches: %w", err)
-	}
-
-	response := &models.ListBatchesResponse{
-		Batches:      batches,
-		TotalBatches: len(batches),
-	}
-
-	return response, nil
-}
-
 // GetStats returns processor statistics
 func (bp *BatchProcessor) GetStats() *ProcessorStats {
 	bp.statsMu.RLock()
@@ -538,7 +322,7 @@ func (bp *BatchProcessor) GetStats() *ProcessorStats {
 	// Create a copy to avoid race conditions
 	return &ProcessorStats{
 		TotalBatches:     bp.stats.TotalBatches,
-		TotalLogs:        bp.stats.TotalLogs,
+		TotalRecords:     bp.stats.TotalRecords,
 		FailedBatches:    bp.stats.FailedBatches,
 		LastBatchTime:    bp.stats.LastBatchTime,
 		LastBatchSize:    bp.stats.LastBatchSize,
@@ -548,14 +332,14 @@ func (bp *BatchProcessor) GetStats() *ProcessorStats {
 }
 
 // updateStats updates processor statistics
-func (bp *BatchProcessor) updateStats(batchID string, numLogs int, startTime time.Time) {
+func (bp *BatchProcessor) updateStats(batchID string, numRecords int, startTime time.Time) {
 	bp.statsMu.Lock()
 	defer bp.statsMu.Unlock()
 
 	bp.stats.TotalBatches++
-	bp.stats.TotalLogs += numLogs
+	bp.stats.TotalRecords += numRecords
 	bp.stats.LastBatchTime = startTime
-	bp.stats.LastBatchSize = numLogs
+	bp.stats.LastBatchSize = numRecords
 	bp.stats.LastBatchID = batchID
 }
 

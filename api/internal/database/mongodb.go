@@ -68,74 +68,6 @@ func NewMongoClient(cfg *config.MongoDBConfig) (*MongoClient, error) {
 
 // CreateIndexes creates optimized compound indexes for the collections
 func (mc *MongoClient) CreateIndexes(ctx context.Context) error {
-	logsCollection := mc.Database.Collection(mc.Config.Collection)
-	syncControlCollection := mc.Database.Collection(mc.Config.SyncControlCollection)
-
-	// Logs collection indexes
-	logsIndexes := []mongo.IndexModel{
-		{
-			Keys:    bson.D{{Key: "id", Value: 1}},
-			Options: options.Index().SetUnique(true),
-		},
-		{
-			Keys: bson.D{{Key: "timestamp", Value: -1}},
-		},
-		{
-			Keys: bson.D{
-				{Key: "source", Value: 1},
-				{Key: "timestamp", Value: -1},
-			},
-		},
-		{
-			Keys: bson.D{
-				{Key: "level", Value: 1},
-				{Key: "timestamp", Value: -1},
-			},
-		},
-		{
-			Keys: bson.D{
-				{Key: "source", Value: 1},
-				{Key: "level", Value: 1},
-				{Key: "timestamp", Value: -1},
-			},
-		},
-		{
-			// Compound index supporting created_at sorting and (created_at, id)
-			// keyset/cursor pagination (the id prefix covers created_at-only use).
-			Keys: bson.D{
-				{Key: "created_at", Value: -1},
-				{Key: "id", Value: -1},
-			},
-		},
-		{
-			Keys: bson.D{{Key: "batch_id", Value: 1}},
-		},
-	}
-
-	// Create logs indexes
-	if _, err := logsCollection.Indexes().CreateMany(ctx, logsIndexes); err != nil {
-		return fmt.Errorf("failed to create logs indexes: %w", err)
-	}
-
-	// Sync control collection indexes
-	syncIndexes := []mongo.IndexModel{
-		{
-			Keys:    bson.D{{Key: "log_id", Value: 1}},
-			Options: options.Index().SetUnique(true),
-		},
-		{
-			Keys: bson.D{{Key: "sync_status", Value: 1}},
-		},
-		{
-			Keys: bson.D{{Key: "created_at", Value: 1}},
-		},
-	}
-
-	// Create sync control indexes
-	if _, err := syncControlCollection.Indexes().CreateMany(ctx, syncIndexes); err != nil {
-		return fmt.Errorf("failed to create sync control indexes: %w", err)
-	}
-
 	// Records collection indexes (generic domain-scoped records)
 	recordsCollection := mc.Database.Collection(mc.Config.RecordsCollection)
 	recordsIndexes := []mongo.IndexModel{
@@ -172,16 +104,6 @@ func (mc *MongoClient) Close(ctx context.Context) error {
 // Ping checks if the connection is alive
 func (mc *MongoClient) Ping(ctx context.Context) error {
 	return mc.Client.Ping(ctx, readpref.Primary())
-}
-
-// GetLogsCollection returns the logs collection
-func (mc *MongoClient) GetLogsCollection() *mongo.Collection {
-	return mc.Database.Collection(mc.Config.Collection)
-}
-
-// GetSyncControlCollection returns the sync control collection
-func (mc *MongoClient) GetSyncControlCollection() *mongo.Collection {
-	return mc.Database.Collection(mc.Config.SyncControlCollection)
 }
 
 // GetRecordsCollection returns the generic records collection

@@ -1,6 +1,6 @@
 # AeternisLog — Tamper-Evident Data Anchoring
 
-**AeternisLog** gives any data **cryptographic proof of integrity**. Records go to MongoDB (fast, queryable), are grouped into **Merkle Trees**, and the root of each batch is anchored on **Hyperledger Fabric** (immutable, auditable). A **Write-Ahead Log (WAL)** with `fsync` guarantees zero data loss before any processing.
+**AeternisLog** gives any data **cryptographic proof of integrity**. Records go to MongoDB (fast, queryable), are grouped into **Merkle Trees**, and the root of each batch is anchored on **Hyperledger Fabric** (immutable, auditable).
 
 Any tampering is mathematically detectable: an auditor recomputes the Merkle Root from MongoDB and compares it against what is stored on the blockchain.
 
@@ -9,16 +9,15 @@ Any tampering is mathematically detectable: an auditor recomputes the Merkle Roo
 ## Architecture
 
 ```
-POST /logs ──► WAL (fsync) ──► MongoDB ──► batch (Merkle root) ──► anchor on Fabric
+POST /api/v1/{domain}/records ──► MongoDB ──► batch (Merkle root) ──► anchor on Fabric
 ```
 
 | Component | Role |
 |---|---|
-| **Go API** (`api/`) | REST (Gin), structured logging (zerolog), WAL, Merkle Tree batching |
-| **MongoDB** | Off-chain storage for logs (hot tier) |
+| **Go API** (`api/`) | REST (Gin), structured logging (zerolog), Merkle Tree batching |
+| **MongoDB** | Off-chain storage for records (hot tier) |
 | **Redis** | Optional cache (graceful degradation if absent) |
 | **Hyperledger Fabric** (`hybrid-architecture/`) | Permissioned blockchain (Raft consensus) that stores the Merkle roots; chaincode in Go |
-| **WAL** | Durability (0% loss). Two backends: `file` (`O_SYNC` + `fsync`, single instance) or `redis` (Redis Streams consumer group, multiple API instances) |
 
 ## Prerequisites
 
@@ -53,7 +52,7 @@ The API comes up at **http://localhost:5001** — Swagger at `/swagger/index.htm
 .
 ├── api/                      # Go API (the product)
 │   ├── cmd/api/              # entrypoint
-│   ├── internal/             # handlers, database, fabric, merkle, wal, logger, ...
+│   ├── internal/             # handlers, database, fabric, merkle, logger, ...
 │   ├── pkg/config/           # configuration
 │   ├── Dockerfile
 │   └── docker-compose.yml    # API + MongoDB + Redis
@@ -65,29 +64,19 @@ The API comes up at **http://localhost:5001** — Swagger at `/swagger/index.htm
 └── README.md
 ```
 
-## API — main endpoints
+## API
+
+The product exposes a single, generic **records** surface (below). A *log* is simply a record in the `logs` domain — there is no separate logs endpoint.
 
 | Method | Route | Description |
 |---|---|---|
-| `POST` | `/logs` | Create a log (automatic hash + WAL) |
-| `GET` | `/logs` | List with filters (`source`, `level`, `limit`) and pagination — `offset` or keyset `cursor` (response returns `next_cursor`) |
-| `GET` | `/logs/:id` | Fetch by ID |
-| `POST` | `/merkle/force-batch` | Force batch creation |
-| `POST` | `/merkle/verify/:id` | Verify the integrity of a batch (Merkle proof) |
-| `GET` | `/merkle/batches` | List batches |
-| `GET` | `/health` · `/stats` | Health and statistics |
-
-Example:
-
-```bash
-curl -X POST http://localhost:5001/logs \
-  -H 'Content-Type: application/json' \
-  -d '{"source": "auth-service", "level": "INFO", "message": "User login successful"}'
-```
+| `GET` | `/health` | Service health (Mongo, Redis, Fabric, batch processor) |
+| `GET` | `/stats` | System statistics |
+| `GET` | `/public/anchors/{batchId}` | Unauthenticated on-chain verification for external auditors |
 
 ## Records (generic domain)
 
-Beyond logs, the API anchors **any** auditable record under a client-chosen domain — the core of the *Tamper-Evident Data Anchoring* pattern. A `Log` is just a record in the `logs` domain.
+The API anchors **any** auditable record under a client-chosen domain — the core of the *Tamper-Evident Data Anchoring* pattern. A *log* is just a record in the `logs` domain.
 
 | Method | Route | Description |
 |---|---|---|
@@ -124,11 +113,11 @@ RATE_LIMIT_MAX_REQUESTS=100        # per client IP, per window
 RATE_LIMIT_WINDOW=1m
 ```
 
-When auth is enabled, the data routes (`/logs`, `/merkle`, `/wal`, `/stats`) require a key; `/health`, `/` and `/swagger` stay open. Send the key in `X-API-Key` or as a bearer token:
+When auth is enabled, the record and report routes (`/api/v1/...`) require a key; `/health`, `/`, `/swagger` and `/public/anchors/...` stay open. Send the key in `X-API-Key` or as a bearer token:
 
 ```bash
-curl -H 'X-API-Key: key-a' http://localhost:5001/logs
-curl -H 'Authorization: Bearer key-a' http://localhost:5001/logs
+curl -H 'X-API-Key: key-a' http://localhost:5001/api/v1/logs/records
+curl -H 'Authorization: Bearer key-a' http://localhost:5001/api/v1/logs/records
 ```
 
 Rate limiting is in-memory **per instance**; a Redis-backed shared limiter is the follow-up for multi-instance deployments.
@@ -137,9 +126,7 @@ Rate limiting is in-memory **per instance**; a Redis-backed shared limiter is th
 
 ## Configuration
 
-The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`, `auth`, `rate_limit`.
-
-**Running multiple API instances:** set `wal.backend: redis` (or `WAL_BACKEND=redis`). The WAL then uses a Redis Streams consumer group, so each log entry is processed by exactly one instance and entries from a crashed instance are reclaimed automatically. In this mode durability depends on Redis persistence — run Redis with AOF enabled (`appendonly yes`; `appendfsync always` for parity with the file backend's per-write `fsync`). The default `file` backend keeps the original single-instance behavior.
+The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `batching`, `logging`, `metrics`, `auth`, `rate_limit`.
 
 **Fabric transport:** the API talks to the peer via `fabric.transport`. `gateway` (default) uses the Fabric Gateway gRPC SDK with an X.509 identity and needs no Docker socket; `docker-exec` is the legacy fallback that shells out to the peer CLI. The gateway paths default to the docker-compose `/fabric-crypto` mount — for a native run (outside compose) set `FABRIC_TRANSPORT=docker-exec`, or override the gateway endpoint/paths (see `api/.env.example`).
 

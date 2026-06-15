@@ -72,61 +72,6 @@ type VerifyBatchResponse struct {
 	Message                string `json:"message"`
 }
 
-// ListBatchesResponse represents the response for listing batches
-type ListBatchesResponse struct {
-	Batches      []*BatchInfo `json:"batches"`
-	TotalBatches int          `json:"total_batches"`
-}
-
-// GetBatchResponse represents the response for getting a specific batch
-type GetBatchResponse struct {
-	Batch   *MerkleBatch `json:"batch"`
-	Logs    []*Log       `json:"logs"`
-	NumLogs int          `json:"num_logs"`
-}
-
-// NewMerkleBatch creates a new MerkleBatch
-func NewMerkleBatch(batchID, merkleRoot string, numLogs int, logIDs []string) *MerkleBatch {
-	now := time.Now().UTC()
-	return &MerkleBatch{
-		BatchID:    batchID,
-		MerkleRoot: merkleRoot,
-		Timestamp:  now.Format(time.RFC3339),
-		NumLogs:    numLogs,
-		LogIDs:     logIDs,
-		CreatedAt:  now,
-	}
-}
-
-// CalculateLogHash calculates SHA256 hash of a log for Merkle Tree
-func CalculateLogHash(log *Log) string {
-	// Build content string matching Python implementation
-	content := fmt.Sprintf("%s%s%s%s%s",
-		log.ID,
-		log.Timestamp,
-		log.Source,
-		log.Level,
-		log.Message,
-	)
-
-	// Add metadata if present
-	if len(log.Metadata) > 0 {
-		metadataJSON, err := json.Marshal(log.Metadata)
-		if err == nil {
-			content += string(metadataJSON)
-		}
-	}
-
-	// Add stacktrace if present
-	if log.Stacktrace != "" {
-		content += log.Stacktrace
-	}
-
-	// Calculate SHA256
-	hash := sha256.Sum256([]byte(content))
-	return fmt.Sprintf("%x", hash)
-}
-
 // CombineHashes combines two hashes using SHA256
 func CombineHashes(hash1, hash2 string) string {
 	combined := hash1 + hash2
@@ -167,16 +112,6 @@ func BuildMerkleTree(hashes []string) string {
 	}
 
 	return currentLevel[0]
-}
-
-// CalculateMerkleRoot calculates the Merkle root from a list of logs
-func CalculateMerkleRoot(logs []*Log) (string, []string) {
-	hashes := make([]string, len(logs))
-	for i, log := range logs {
-		hashes[i] = CalculateLogHash(log)
-	}
-	merkleRoot := BuildMerkleTree(hashes)
-	return merkleRoot, hashes
 }
 
 // Validate validates the MerkleBatch
