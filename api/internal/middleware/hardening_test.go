@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +10,27 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// TestMatchAPIKeyHashed covers F05: a configured key may be a "sha256:<hex>"
+// hash (so the raw key is never stored) and plaintext keys still work.
+func TestMatchAPIKeyHashed(t *testing.T) {
+	sum := sha256.Sum256([]byte("secret-key"))
+	hashed := "sha256:" + hex.EncodeToString(sum[:])
+	m := map[string]string{
+		hashed:      "acme",
+		"plain-key": "globex",
+	}
+
+	if tenant, ok := matchAPIKey("secret-key", m); !ok || tenant != "acme" {
+		t.Errorf("hashed key: got (%q, %v), want (acme, true)", tenant, ok)
+	}
+	if tenant, ok := matchAPIKey("plain-key", m); !ok || tenant != "globex" {
+		t.Errorf("plaintext key: got (%q, %v), want (globex, true)", tenant, ok)
+	}
+	if _, ok := matchAPIKey("nope", m); ok {
+		t.Error("an unknown key must not match")
+	}
+}
 
 // TestCORS covers F08: "*" must never be paired with Allow-Credentials, an
 // explicit allowlisted origin is reflected with credentials, and a non-listed

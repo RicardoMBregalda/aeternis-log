@@ -557,6 +557,12 @@ func overrideFromEnv(config *Config) {
 	if val := os.Getenv("AUTH_API_KEYS"); val != "" {
 		config.Auth.APIKeys = splitAndTrim(val, ",")
 	}
+	// AUTH_TENANTS lets tenant keys be injected from a Secret (not the ConfigMap).
+	// Format: "tenantA:keyA1,keyA2;tenantB:keyB1". Keys may be plaintext or
+	// "sha256:<hex>" hashes.
+	if val := os.Getenv("AUTH_TENANTS"); val != "" {
+		config.Auth.Tenants = parseTenants(val)
+	}
 
 	// Rate limiting
 	if val := os.Getenv("RATE_LIMIT_ENABLED"); val != "" {
@@ -596,6 +602,29 @@ func overrideFromEnv(config *Config) {
 }
 
 // splitAndTrim splits s by sep and drops empty/whitespace-only items.
+// parseTenants parses the AUTH_TENANTS env format
+// "tenantA:keyA1,keyA2;tenantB:keyB1" into TenantKeys. Groups or keys that are
+// empty or malformed are skipped.
+func parseTenants(s string) []TenantKeys {
+	var out []TenantKeys
+	for _, group := range strings.Split(s, ";") {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		i := strings.Index(group, ":")
+		if i < 0 {
+			continue
+		}
+		id := strings.TrimSpace(group[:i])
+		keys := splitAndTrim(group[i+1:], ",")
+		if id != "" && len(keys) > 0 {
+			out = append(out, TenantKeys{ID: id, Keys: keys})
+		}
+	}
+	return out
+}
+
 func splitAndTrim(s, sep string) []string {
 	parts := strings.Split(s, sep)
 	out := make([]string, 0, len(parts))
