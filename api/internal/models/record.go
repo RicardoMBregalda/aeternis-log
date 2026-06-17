@@ -6,6 +6,13 @@ import (
 	"fmt"
 )
 
+// Anchor lifecycle states for a batched record (see Record.AnchorStatus).
+const (
+	RecordAnchorPending  = "pending"  // claimed into a batch, not yet anchored
+	RecordAnchorAnchored = "anchored" // batch committed on the ledger
+	RecordAnchorFailed   = "failed"   // anchor attempt failed; reconciler retries
+)
+
 // Record is the generic, domain-agnostic auditable record at the core of the
 // Tamper-Evident Data Anchoring pattern. A Log is just a Record in the "logs"
 // domain; any client can anchor arbitrary records under their own domain.
@@ -26,6 +33,10 @@ type Record struct {
 	CreatedAt  FlexTime  `json:"created_at" bson:"created_at"`
 	BatchID    string    `json:"batch_id,omitempty" bson:"batch_id,omitempty"`
 	MerkleRoot string    `json:"merkle_root,omitempty" bson:"merkle_root,omitempty"`
+	// AnchorStatus is the batch's anchoring lifecycle: pending (claimed, not yet
+	// anchored), anchored (committed on the ledger), or failed (anchor attempt
+	// failed, awaiting reconciliation). Empty on never-batched records.
+	AnchorStatus string `json:"anchor_status,omitempty" bson:"anchor_status,omitempty"`
 	// TxID is the Fabric transaction that anchored the batch (set after anchoring).
 	TxID       string    `json:"tx_id,omitempty" bson:"tx_id,omitempty"`
 	BatchedAt  *FlexTime `json:"batched_at,omitempty" bson:"batched_at,omitempty"`

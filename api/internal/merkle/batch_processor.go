@@ -17,13 +17,23 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+// Anchorer is the ledger seam the batch processor depends on: it stores and
+// reads Merkle batch roots. *fabric.FabricClient satisfies it; a fake makes the
+// anchor-failure and reconciliation paths testable without a live Fabric.
+type Anchorer interface {
+	Enabled() bool
+	ChannelForTenant(tenant string) string
+	StoreMerkleBatch(ctx context.Context, channel, batchID, merkleRoot string, numRecords int, recordIDs []string) (*fabric.InvokeResponse, error)
+	VerifyMerkleBatch(ctx context.Context, channel, batchID string) (*fabric.QueryResponse, error)
+}
+
 // BatchProcessor batches pending records, builds their Merkle tree and anchors
 // the root on Fabric — automatically (auto-batch ticker) or on demand.
 type BatchProcessor struct {
-	collections  *database.Collections
-	fabricClient *fabric.FabricClient
-	config       *config.BatchingConfig
-	notifier     *webhook.Notifier
+	collections *database.Collections
+	anchorer    Anchorer
+	config      *config.BatchingConfig
+	notifier    *webhook.Notifier
 
 	stopChan chan struct{}
 	wg       sync.WaitGroup
@@ -46,13 +56,13 @@ type ProcessorStats struct {
 }
 
 // NewBatchProcessor creates a new batch processor
-func NewBatchProcessor(collections *database.Collections, fabricClient *fabric.FabricClient, cfg *config.BatchingConfig) *BatchProcessor {
+func NewBatchProcessor(collections *database.Collections, anchorer Anchorer, cfg *config.BatchingConfig) *BatchProcessor {
 	return &BatchProcessor{
-		collections:  collections,
-		fabricClient: fabricClient,
-		config:       cfg,
-		stopChan:     make(chan struct{}),
-		stats:        &ProcessorStats{},
+		collections: collections,
+		anchorer:    anchorer,
+		config:      cfg,
+		stopChan:    make(chan struct{}),
+		stats:       &ProcessorStats{},
 	}
 }
 
@@ -139,7 +149,11 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Auto-batch pending records per (tenant, domain); each anchored to Fabric.
+			// First re-drive any batch claimed but not yet anchored (F03).
+			if err := bp.ReconcileBatches(ctx); err != nil {
+				zlog.Error().Err(err).Msg("batch reconcile error")
+			}
+			// Then auto-batch newly pending records per (tenant, domain).
 			if scopes, err := bp.collections.DistinctPendingRecordScopes(ctx); err == nil {
 				for _, s := range scopes {
 					if _, err := bp.ProcessRecordBatch(ctx, s.Tenant, s.Domain, bp.config.AutoBatchSize); err != nil {
@@ -157,10 +171,10 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 // ("", AnchorUnknown) when Fabric is disabled or unreachable (so the caller can
 // fall back to a local check and disclose that the anchor was not consulted).
 func (bp *BatchProcessor) anchoredRoot(ctx context.Context, channel, batchID string) (string, string) {
-	if bp.fabricClient == nil || !bp.fabricClient.Config.SyncEnabled {
+	if bp.anchorer == nil || !bp.anchorer.Enabled() {
 		return "", models.AnchorUnknown
 	}
-	resp, err := bp.fabricClient.VerifyMerkleBatch(ctx, channel, batchID)
+	resp, err := bp.anchorer.VerifyMerkleBatch(ctx, channel, batchID)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "does not exist") {
 			return "", models.AnchorUnanchored
@@ -226,24 +240,21 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, tenant, domain
 		batchSize = bp.config.AutoBatchSize
 	}
 
-	records, err := bp.collections.FindRecordsWithoutBatch(ctx, tenant, domain, batchSize)
+	// Atomically claim pending records into a fresh batch id (F03). The claim is
+	// race-safe, so concurrent batchers never grab the same records.
+	batchID := fmt.Sprintf("%s-%s-%s", tenant, domain, uuid.New().String()[:8])
+	records, err := bp.collections.ClaimRecordsForBatch(ctx, tenant, domain, batchID, batchSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find records: %w", err)
+		return nil, fmt.Errorf("failed to claim records: %w", err)
 	}
 	if len(records) == 0 {
 		return nil, nil
 	}
 
-	batchID := fmt.Sprintf("%s-%s-%s", tenant, domain, uuid.New().String()[:8])
 	merkleRoot, _ := models.CalculateRecordMerkleRoot(records)
-
 	recordIDs := make([]string, len(records))
 	for i, r := range records {
 		recordIDs[i] = r.ID
-	}
-
-	if err := bp.collections.UpdateRecordBatch(ctx, tenant, domain, recordIDs, batchID, merkleRoot); err != nil {
-		return nil, fmt.Errorf("failed to stamp records: %w", err)
 	}
 
 	result := &models.RecordBatchResult{
@@ -254,26 +265,39 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, tenant, domain
 		NumRecords: len(records),
 	}
 
-	if bp.fabricClient != nil {
-		fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-
-		channel := bp.fabricClient.Config.ChannelForTenant(tenant)
-		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, channel, batchID, merkleRoot, len(records), recordIDs)
-		if err != nil {
-			bp.incrementFailedBatch()
-			return nil, fmt.Errorf("failed to anchor record batch in Fabric: %w", err)
+	// No ledger configured: persist the root, leave the batch pending.
+	if bp.anchorer == nil || !bp.anchorer.Enabled() {
+		if err := bp.collections.SetRecordBatchMerkleRoot(ctx, tenant, domain, batchID, merkleRoot); err != nil {
+			return result, err
 		}
-		result.TxID = inv.TxID
-		result.Anchored = true
-		result.Channel = channel
-		// Persist the tx id on the batch's records so audit reports can cite it.
-		if err := bp.collections.SetRecordBatchTxID(ctx, tenant, domain, batchID, inv.TxID); err != nil {
-			zlog.Warn().Err(err).Str("batch_id", batchID).Msg("failed to persist batch tx id")
-		}
-		bp.notifyAnchored(tenant, domain, batchID, merkleRoot, len(records), inv.TxID)
-		metrics.RecordAnchoredBatch(tenant, domain, len(records))
+		bp.updateStats(batchID, len(records), startTime)
+		return result, nil
 	}
+
+	// Anchor AFTER claiming (stamp-after-anchor). On failure the records are
+	// marked failed — kept, never excluded forever — and the reconciler re-drives
+	// them; we never commit a "batched but unanchored" state we can't recover.
+	fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	channel := bp.anchorer.ChannelForTenant(tenant)
+	result.Channel = channel
+
+	inv, err := bp.anchorer.StoreMerkleBatch(fabricCtx, channel, batchID, merkleRoot, len(records), recordIDs)
+	if err != nil {
+		bp.incrementFailedBatch()
+		if mErr := bp.collections.MarkRecordBatchFailed(ctx, tenant, domain, batchID, merkleRoot); mErr != nil {
+			zlog.Error().Err(mErr).Str("batch_id", batchID).Msg("failed to mark batch failed")
+		}
+		return result, fmt.Errorf("failed to anchor record batch in Fabric: %w", err)
+	}
+
+	if err := bp.collections.SetRecordBatchAnchored(ctx, tenant, domain, batchID, merkleRoot, inv.TxID); err != nil {
+		zlog.Warn().Err(err).Str("batch_id", batchID).Msg("anchored but failed to persist status/tx id")
+	}
+	result.TxID = inv.TxID
+	result.Anchored = true
+	bp.notifyAnchored(tenant, domain, batchID, merkleRoot, len(records), inv.TxID)
+	metrics.RecordAnchoredBatch(tenant, domain, len(records))
 
 	bp.updateStats(batchID, len(records), startTime)
 	zlog.Info().
@@ -304,14 +328,69 @@ func (bp *BatchProcessor) VerifyRecordBatch(ctx context.Context, tenant, domain,
 	recalculated, _ := models.CalculateRecordMerkleRoot(records)
 
 	channel := ""
-	if bp.fabricClient != nil {
-		channel = bp.fabricClient.Config.ChannelForTenant(tenant)
+	if bp.anchorer != nil {
+		channel = bp.anchorer.ChannelForTenant(tenant)
 	}
 	onChainRoot, anchorStatus := bp.anchoredRoot(ctx, channel, batchID)
 
 	resp := buildVerifyResponse(batchID, len(records), storedRoot, recalculated, onChainRoot, anchorStatus)
 	metrics.RecordVerification(domain, resp.IsValid)
 	return resp, nil
+}
+
+// ReconcileBatches re-drives batches that were claimed but not anchored (status
+// pending or failed) by re-submitting each to the ledger. Thanks to the
+// write-once anchor (F02), a batch that is in fact already on-chain returns an
+// "already anchored" error, which the reconciler treats as success and stops
+// retrying. Genuine failures are left for the next cycle.
+func (bp *BatchProcessor) ReconcileBatches(ctx context.Context) error {
+	if bp.anchorer == nil || !bp.anchorer.Enabled() {
+		return nil
+	}
+	scopes, err := bp.collections.FindUnanchoredBatchScopes(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list unanchored batches: %w", err)
+	}
+	for _, s := range scopes {
+		records, err := bp.collections.FindRecordsByBatchID(ctx, s.Tenant, s.Domain, s.BatchID)
+		if err != nil || len(records) == 0 {
+			continue
+		}
+		// Re-submit the ORIGINAL stored root (not a recompute), so the on-chain
+		// root matches what this batch committed at creation.
+		root := records[0].MerkleRoot
+		ids := make([]string, len(records))
+		for i, r := range records {
+			ids[i] = r.ID
+		}
+		channel := bp.anchorer.ChannelForTenant(s.Tenant)
+
+		inv, err := bp.anchorer.StoreMerkleBatch(ctx, channel, s.BatchID, root, len(records), ids)
+		if err != nil {
+			if isAlreadyAnchored(err) {
+				if sErr := bp.collections.SetRecordBatchAnchored(ctx, s.Tenant, s.Domain, s.BatchID, root, records[0].TxID); sErr != nil {
+					zlog.Error().Err(sErr).Str("batch_id", s.BatchID).Msg("reconcile: failed to sync already-anchored status")
+				}
+				continue
+			}
+			zlog.Warn().Err(err).Str("batch_id", s.BatchID).Msg("reconcile: re-anchor failed, will retry")
+			continue
+		}
+		if err := bp.collections.SetRecordBatchAnchored(ctx, s.Tenant, s.Domain, s.BatchID, root, inv.TxID); err != nil {
+			zlog.Error().Err(err).Str("batch_id", s.BatchID).Msg("reconcile: failed to persist anchored status")
+			continue
+		}
+		bp.notifyAnchored(s.Tenant, s.Domain, s.BatchID, root, len(records), inv.TxID)
+		metrics.RecordAnchoredBatch(s.Tenant, s.Domain, len(records))
+		zlog.Info().Str("batch_id", s.BatchID).Str("tx_id", inv.TxID).Msg("reconcile: batch anchored")
+	}
+	return nil
+}
+
+// isAlreadyAnchored reports whether an anchor error is the write-once guard (F02),
+// meaning the batch is already committed on-chain.
+func isAlreadyAnchored(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "already anchored")
 }
 
 // GetStats returns processor statistics

@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +14,99 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
+
+// TestClaimRecordsForBatchAtomic proves F03's atomic claim: many concurrent
+// batchers contending for the same pending pool each get a disjoint slice — no
+// record is ever claimed by two batches (which would cause a double-anchor).
+func TestClaimRecordsForBatchAtomic(t *testing.T) {
+	cfg := &config.MongoDBConfig{
+		URL:                      "mongodb://localhost:27017",
+		Database:                 "logdb_test",
+		Collection:               "logs_test",
+		RecordsCollection:        "records_claim_test",
+		SyncControlCollection:    "sync_control_test",
+		MinPoolSize:              5,
+		MaxPoolSize:              20,
+		MaxIdleTimeMS:            60000,
+		ServerSelectionTimeoutMS: 5000,
+		ConnectTimeout:           10 * time.Second,
+		SocketTimeout:            30 * time.Second,
+	}
+	client, err := NewMongoClient(cfg)
+	if err != nil {
+		t.Skipf("MongoDB not available: %v", err)
+		return
+	}
+	defer client.Close(context.Background())
+
+	collections := NewCollections(client)
+	ctx := context.Background()
+	client.Database.Collection(cfg.RecordsCollection).Drop(ctx)
+
+	const total = 30
+	for i := 0; i < total; i++ {
+		rec := &models.Record{
+			Tenant: "acme", Domain: "claim", ID: fmt.Sprintf("r-%02d", i),
+			Timestamp: time.Now().Format(time.RFC3339), Source: "t",
+			Payload:   map[string]interface{}{"n": i},
+			CreatedAt: models.FlexTime{Time: time.Now()},
+		}
+		rec.Hash = rec.CalculateHash()
+		if err := collections.InsertRecord(ctx, rec); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	const workers = 5
+	var wg sync.WaitGroup
+	claimedBy := make([]map[string]bool, workers)
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			batchID := fmt.Sprintf("batch-%d", w)
+			claimed, err := collections.ClaimRecordsForBatch(ctx, "acme", "claim", batchID, total)
+			if err != nil {
+				t.Errorf("worker %d claim: %v", w, err)
+				return
+			}
+			m := make(map[string]bool, len(claimed))
+			for _, r := range claimed {
+				m[r.ID] = true
+				if r.BatchID != batchID {
+					t.Errorf("record %s: batch_id %q, want %q", r.ID, r.BatchID, batchID)
+				}
+				if r.AnchorStatus != models.RecordAnchorPending {
+					t.Errorf("record %s: status %q, want pending", r.ID, r.AnchorStatus)
+				}
+			}
+			claimedBy[w] = m
+		}(w)
+	}
+	wg.Wait()
+
+	seen := map[string]int{}
+	claimedTotal := 0
+	for _, m := range claimedBy {
+		claimedTotal += len(m)
+		for id := range m {
+			seen[id]++
+		}
+	}
+	if claimedTotal != total {
+		t.Errorf("claimed total = %d, want %d (every record claimed exactly once)", claimedTotal, total)
+	}
+	for id, n := range seen {
+		if n != 1 {
+			t.Errorf("record %s claimed by %d batches, want 1 (double-claim)", id, n)
+		}
+	}
+	if pending, err := collections.FindRecordsWithoutBatch(ctx, "acme", "claim", 1000); err != nil {
+		t.Fatalf("pending: %v", err)
+	} else if len(pending) != 0 {
+		t.Errorf("expected 0 pending after claims, got %d", len(pending))
+	}
+}
 
 // TestMongoClientConnection tests MongoDB connection
 func TestMongoClientConnection(t *testing.T) {

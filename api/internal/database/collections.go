@@ -130,31 +130,134 @@ func (c *Collections) FindRecordsByBatchID(ctx context.Context, tenant, domain, 
 	return c.FindRecords(ctx, filter, opts)
 }
 
-// UpdateRecordBatch stamps a set of records with their batch id and Merkle root.
-func (c *Collections) UpdateRecordBatch(ctx context.Context, tenant, domain string, recordIDs []string, batchID, merkleRoot string) error {
-	filter := bson.M{"tenant": tenant, "domain": domain, "id": bson.M{"$in": recordIDs}}
-	update := bson.M{
-		"$set": bson.M{
-			"batch_id":    batchID,
-			"merkle_root": merkleRoot,
-			"batched_at":  time.Now().UTC().Format(time.RFC3339),
-		},
+// ClaimRecordsForBatch atomically claims up to limit pending records of a
+// (tenant, domain) into batchID (anchor_status=pending) and returns the claimed
+// set in deterministic order. The claim is atomic: concurrent batchers cannot
+// claim the same record, because the update guards on batch_id not existing.
+func (c *Collections) ClaimRecordsForBatch(ctx context.Context, tenant, domain, batchID string, limit int) ([]*models.Record, error) {
+	// 1) Pick candidate pending ids (bounded by limit), in deterministic order.
+	pending, err := c.FindRecordsWithoutBatch(ctx, tenant, domain, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(pending) == 0 {
+		return nil, nil
+	}
+	ids := make([]string, len(pending))
+	for i, r := range pending {
+		ids[i] = r.ID
 	}
 
+	// 2) Claim only those still unbatched. The "batch_id does not exist" guard is
+	// what makes this race-safe: each document is updated atomically, so a record
+	// another batcher already claimed will not match and is never double-claimed.
+	filter := bson.M{
+		"tenant":     tenant,
+		"domain":     domain,
+		"id":         bson.M{"$in": ids},
+		"batch_id":   bson.M{"$exists": false},
+		"deleted_at": bson.M{"$exists": false},
+	}
+	update := bson.M{"$set": bson.M{
+		"batch_id":      batchID,
+		"anchor_status": models.RecordAnchorPending,
+		"batched_at":    time.Now().UTC().Format(time.RFC3339),
+	}}
 	if _, err := c.Records.UpdateMany(ctx, filter, update); err != nil {
-		return fmt.Errorf("failed to update records with batch: %w", err)
+		return nil, fmt.Errorf("failed to claim records: %w", err)
+	}
+
+	// 3) Return exactly the records this call won (read back by batch id).
+	return c.FindRecordsByBatchID(ctx, tenant, domain, batchID)
+}
+
+// SetRecordBatchMerkleRoot stamps the Merkle root on a batch's records. Used when
+// no ledger is configured, so the batch keeps its pending status.
+func (c *Collections) SetRecordBatchMerkleRoot(ctx context.Context, tenant, domain, batchID, merkleRoot string) error {
+	filter := bson.M{"tenant": tenant, "domain": domain, "batch_id": batchID}
+	if _, err := c.Records.UpdateMany(ctx, filter, bson.M{"$set": bson.M{"merkle_root": merkleRoot}}); err != nil {
+		return fmt.Errorf("failed to set batch merkle root: %w", err)
 	}
 	return nil
 }
 
-// SetRecordBatchTxID records the Fabric transaction id on every record of a batch,
-// after the batch has been anchored (the tx id is unknown at stamp time).
-func (c *Collections) SetRecordBatchTxID(ctx context.Context, tenant, domain, batchID, txID string) error {
+// SetRecordBatchAnchored marks a batch anchored: it records the Merkle root, the
+// Fabric tx id and anchor_status=anchored on every record of the batch.
+func (c *Collections) SetRecordBatchAnchored(ctx context.Context, tenant, domain, batchID, merkleRoot, txID string) error {
 	filter := bson.M{"tenant": tenant, "domain": domain, "batch_id": batchID}
-	if _, err := c.Records.UpdateMany(ctx, filter, bson.M{"$set": bson.M{"tx_id": txID}}); err != nil {
-		return fmt.Errorf("failed to set batch tx id: %w", err)
+	update := bson.M{"$set": bson.M{
+		"merkle_root":   merkleRoot,
+		"tx_id":         txID,
+		"anchor_status": models.RecordAnchorAnchored,
+	}}
+	if _, err := c.Records.UpdateMany(ctx, filter, update); err != nil {
+		return fmt.Errorf("failed to mark batch anchored: %w", err)
 	}
 	return nil
+}
+
+// MarkRecordBatchFailed records the Merkle root and anchor_status=failed on a
+// batch whose anchor attempt failed. The records keep their batch_id (so they
+// never return to the pending pool) and the reconciler re-drives them.
+func (c *Collections) MarkRecordBatchFailed(ctx context.Context, tenant, domain, batchID, merkleRoot string) error {
+	filter := bson.M{"tenant": tenant, "domain": domain, "batch_id": batchID}
+	update := bson.M{"$set": bson.M{
+		"merkle_root":   merkleRoot,
+		"anchor_status": models.RecordAnchorFailed,
+	}}
+	if _, err := c.Records.UpdateMany(ctx, filter, update); err != nil {
+		return fmt.Errorf("failed to mark batch failed: %w", err)
+	}
+	return nil
+}
+
+// UnanchoredBatch identifies a batch that was claimed but is not yet anchored.
+type UnanchoredBatch struct {
+	Tenant  string
+	Domain  string
+	BatchID string
+}
+
+// FindUnanchoredBatchScopes returns the batches still awaiting anchoring
+// (anchor_status pending or failed), so the reconciler can re-drive them.
+func (c *Collections) FindUnanchoredBatchScopes(ctx context.Context) ([]UnanchoredBatch, error) {
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.D{
+			{Key: "anchor_status", Value: bson.D{{Key: "$in", Value: bson.A{models.RecordAnchorPending, models.RecordAnchorFailed}}}},
+		}}},
+		{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: bson.D{
+				{Key: "tenant", Value: "$tenant"},
+				{Key: "domain", Value: "$domain"},
+				{Key: "batch_id", Value: "$batch_id"},
+			}},
+		}}},
+	}
+
+	cursor, err := c.Records.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list unanchored batches: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var rows []struct {
+		ID struct {
+			Tenant  string `bson:"tenant"`
+			Domain  string `bson:"domain"`
+			BatchID string `bson:"batch_id"`
+		} `bson:"_id"`
+	}
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("failed to decode unanchored batches: %w", err)
+	}
+
+	out := make([]UnanchoredBatch, 0, len(rows))
+	for _, r := range rows {
+		if r.ID.BatchID != "" {
+			out = append(out, UnanchoredBatch{Tenant: r.ID.Tenant, Domain: r.ID.Domain, BatchID: r.ID.BatchID})
+		}
+	}
+	return out, nil
 }
 
 // AggregateRecordBatches summarizes the anchored batches of a (tenant, domain) whose
