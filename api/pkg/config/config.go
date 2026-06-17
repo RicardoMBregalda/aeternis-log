@@ -83,6 +83,11 @@ type ServerConfig struct {
 	ReadTimeout     time.Duration `yaml:"read_timeout"`
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+	// MaxBodyBytes caps the accepted request body size (0 disables the cap).
+	MaxBodyBytes int64 `yaml:"max_body_bytes"`
+	// CORSAllowedOrigins is the allowlist of browser origins. "*" allows any
+	// origin but disables credentialed CORS (the invalid "*"+credentials combo).
+	CORSAllowedOrigins []string `yaml:"cors_allowed_origins"`
 }
 
 // MongoDBConfig holds MongoDB connection configuration
@@ -219,12 +224,14 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Default configuration
 	config := &Config{
 		Server: ServerConfig{
-			Host:            "0.0.0.0",
-			Port:            5001,
-			Debug:           false,
-			ReadTimeout:     30 * time.Second,
-			WriteTimeout:    30 * time.Second,
-			ShutdownTimeout: 10 * time.Second,
+			Host:               "0.0.0.0",
+			Port:               5001,
+			Debug:              false,
+			ReadTimeout:        30 * time.Second,
+			WriteTimeout:       30 * time.Second,
+			ShutdownTimeout:    10 * time.Second,
+			MaxBodyBytes:       1 << 20, // 1 MiB
+			CORSAllowedOrigins: []string{"*"},
 		},
 		MongoDB: MongoDBConfig{
 			URL:                       "mongodb://localhost:27017",
@@ -368,6 +375,16 @@ func overrideFromEnv(config *Config) {
 	}
 	if val := os.Getenv("SERVER_DEBUG"); val != "" {
 		config.Server.Debug = val == "true"
+	}
+	if val := os.Getenv("SERVER_MAX_BODY_BYTES"); val != "" {
+		if n, err := strconv.ParseInt(val, 10, 64); err == nil {
+			config.Server.MaxBodyBytes = n
+		}
+	}
+	if val := os.Getenv("SERVER_CORS_ALLOWED_ORIGINS"); val != "" {
+		if origins := splitAndTrim(val, ","); len(origins) > 0 {
+			config.Server.CORSAllowedOrigins = origins
+		}
 	}
 
 	// MongoDB
@@ -540,6 +557,12 @@ func overrideFromEnv(config *Config) {
 	if val := os.Getenv("AUTH_API_KEYS"); val != "" {
 		config.Auth.APIKeys = splitAndTrim(val, ",")
 	}
+	// AUTH_TENANTS lets tenant keys be injected from a Secret (not the ConfigMap).
+	// Format: "tenantA:keyA1,keyA2;tenantB:keyB1". Keys may be plaintext or
+	// "sha256:<hex>" hashes.
+	if val := os.Getenv("AUTH_TENANTS"); val != "" {
+		config.Auth.Tenants = parseTenants(val)
+	}
 
 	// Rate limiting
 	if val := os.Getenv("RATE_LIMIT_ENABLED"); val != "" {
@@ -579,6 +602,29 @@ func overrideFromEnv(config *Config) {
 }
 
 // splitAndTrim splits s by sep and drops empty/whitespace-only items.
+// parseTenants parses the AUTH_TENANTS env format
+// "tenantA:keyA1,keyA2;tenantB:keyB1" into TenantKeys. Groups or keys that are
+// empty or malformed are skipped.
+func parseTenants(s string) []TenantKeys {
+	var out []TenantKeys
+	for _, group := range strings.Split(s, ";") {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		i := strings.Index(group, ":")
+		if i < 0 {
+			continue
+		}
+		id := strings.TrimSpace(group[:i])
+		keys := splitAndTrim(group[i+1:], ",")
+		if id != "" && len(keys) > 0 {
+			out = append(out, TenantKeys{ID: id, Keys: keys})
+		}
+	}
+	return out
+}
+
 func splitAndTrim(s, sep string) []string {
 	parts := strings.Split(s, sep)
 	out := make([]string, 0, len(parts))

@@ -152,17 +152,5 @@ func (h *HealthHandler) GetStats(c *gin.Context) {
 		stats["batch_processor"] = h.batchProcessor.GetStats()
 	}
 
-	// Sync stats
-	if h.collections != nil {
-		if syncStats, err := h.collections.AggregateSyncStats(ctx); err == nil {
-			stats["sync"] = syncStats
-		}
-
-		// Total logs count
-		if totalLogs, err := h.collections.CountLogs(ctx, map[string]interface{}{}); err == nil {
-			stats["total_logs"] = totalLogs
-		}
-	}
-
 	c.JSON(http.StatusOK, stats)
 }

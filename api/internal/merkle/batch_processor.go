@@ -3,6 +3,7 @@ package merkle
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,36 +17,37 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
-// BatchProcessor handles automatic batching and Merkle tree generation
-type BatchProcessor struct {
-	collections   *database.Collections
-	fabricClient  *fabric.FabricClient
-	config        *config.BatchingConfig
-	notifier      *webhook.Notifier
-
-	// Worker pool
-	workers       int
-	jobQueue      chan *BatchJob
-	stopChan      chan struct{}
-	wg            sync.WaitGroup
-	running       bool
-	mu            sync.RWMutex
-	
-	// Statistics
-	stats         *ProcessorStats
-	statsMu       sync.RWMutex
+// Anchorer is the ledger seam the batch processor depends on: it stores and
+// reads Merkle batch roots. *fabric.FabricClient satisfies it; a fake makes the
+// anchor-failure and reconciliation paths testable without a live Fabric.
+type Anchorer interface {
+	Enabled() bool
+	ChannelForTenant(tenant string) string
+	StoreMerkleBatch(ctx context.Context, channel, batchID, merkleRoot string, numRecords int, recordIDs []string) (*fabric.InvokeResponse, error)
+	VerifyMerkleBatch(ctx context.Context, channel, batchID string) (*fabric.QueryResponse, error)
 }
 
-// BatchJob represents a batching job
-type BatchJob struct {
-	BatchSize int
-	Context   context.Context
+// BatchProcessor batches pending records, builds their Merkle tree and anchors
+// the root on Fabric — automatically (auto-batch ticker) or on demand.
+type BatchProcessor struct {
+	collections *database.Collections
+	anchorer    Anchorer
+	config      *config.BatchingConfig
+	notifier    *webhook.Notifier
+
+	stopChan chan struct{}
+	wg       sync.WaitGroup
+	running  bool
+	mu       sync.RWMutex
+
+	stats   *ProcessorStats
+	statsMu sync.RWMutex
 }
 
 // ProcessorStats holds processor statistics
 type ProcessorStats struct {
 	TotalBatches     int       `json:"total_batches"`
-	TotalLogs        int       `json:"total_logs"`
+	TotalRecords     int       `json:"total_records"`
 	FailedBatches    int       `json:"failed_batches"`
 	LastBatchTime    time.Time `json:"last_batch_time"`
 	LastBatchSize    int       `json:"last_batch_size"`
@@ -54,20 +56,13 @@ type ProcessorStats struct {
 }
 
 // NewBatchProcessor creates a new batch processor
-func NewBatchProcessor(collections *database.Collections, fabricClient *fabric.FabricClient, cfg *config.BatchingConfig) *BatchProcessor {
-	workers := cfg.BatchExecutorWorkers
-	if workers <= 0 {
-		workers = 5
-	}
-
+func NewBatchProcessor(collections *database.Collections, anchorer Anchorer, cfg *config.BatchingConfig) *BatchProcessor {
 	return &BatchProcessor{
-		collections:  collections,
-		fabricClient: fabricClient,
-		config:       cfg,
-		workers:      workers,
-		jobQueue:     make(chan *BatchJob, 100),
-		stopChan:     make(chan struct{}),
-		stats:        &ProcessorStats{},
+		collections: collections,
+		anchorer:    anchorer,
+		config:      cfg,
+		stopChan:    make(chan struct{}),
+		stats:       &ProcessorStats{},
 	}
 }
 
@@ -103,12 +98,6 @@ func (bp *BatchProcessor) Start(ctx context.Context) error {
 
 	bp.running = true
 
-	// Start worker pool
-	for i := 0; i < bp.workers; i++ {
-		bp.wg.Add(1)
-		go bp.worker(ctx, i)
-	}
-
 	// Start auto-batch ticker if enabled
 	if bp.config.Enabled && bp.config.AutoBatchInterval > 0 {
 		bp.wg.Add(1)
@@ -142,26 +131,7 @@ func (bp *BatchProcessor) Stop(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		return fmt.Errorf("timeout waiting for workers to stop")
-	}
-}
-
-// worker processes batch jobs
-func (bp *BatchProcessor) worker(ctx context.Context, workerID int) {
-	defer bp.wg.Done()
-
-	for {
-		select {
-		case <-bp.stopChan:
-			return
-		case <-ctx.Done():
-			return
-		case job := <-bp.jobQueue:
-			if err := bp.processBatch(job.Context, job.BatchSize); err != nil {
-				bp.incrementError()
-				zlog.Error().Err(err).Int("worker", workerID).Msg("batch processing error")
-			}
-		}
+		return fmt.Errorf("timeout waiting for batch processor to stop")
 	}
 }
 
@@ -179,17 +149,11 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Submit auto-batch job for logs.
-			select {
-			case bp.jobQueue <- &BatchJob{
-				BatchSize: bp.config.AutoBatchSize,
-				Context:   ctx,
-			}:
-			default:
-				// Queue is full, skip this tick
+			// First re-drive any batch claimed but not yet anchored (F03).
+			if err := bp.ReconcileBatches(ctx); err != nil {
+				zlog.Error().Err(err).Msg("batch reconcile error")
 			}
-
-			// Auto-batch pending records per (tenant, domain); each anchored to Fabric.
+			// Then auto-batch newly pending records per (tenant, domain).
 			if scopes, err := bp.collections.DistinctPendingRecordScopes(ctx); err == nil {
 				for _, s := range scopes {
 					if _, err := bp.ProcessRecordBatch(ctx, s.Tenant, s.Domain, bp.config.AutoBatchSize); err != nil {
@@ -201,172 +165,70 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 	}
 }
 
-// ProcessBatch submits a batch job for processing
-func (bp *BatchProcessor) ProcessBatch(ctx context.Context, batchSize int) error {
-	bp.mu.RLock()
-	if !bp.running {
-		bp.mu.RUnlock()
-		return fmt.Errorf("batch processor not running")
+// anchoredRoot fetches the Merkle root anchored on-chain for a batch and reports
+// where it came from. It returns (root, AnchorAnchored) when the ledger holds the
+// batch, ("", AnchorUnanchored) when the ledger has no such batch, and
+// ("", AnchorUnknown) when Fabric is disabled or unreachable (so the caller can
+// fall back to a local check and disclose that the anchor was not consulted).
+func (bp *BatchProcessor) anchoredRoot(ctx context.Context, channel, batchID string) (string, string) {
+	if bp.anchorer == nil || !bp.anchorer.Enabled() {
+		return "", models.AnchorUnknown
 	}
-	bp.mu.RUnlock()
-
-	if batchSize <= 0 {
-		batchSize = bp.config.AutoBatchSize
+	resp, err := bp.anchorer.VerifyMerkleBatch(ctx, channel, batchID)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "does not exist") {
+			return "", models.AnchorUnanchored
+		}
+		zlog.Warn().Err(err).Str("batch_id", batchID).Str("channel", channel).
+			Msg("on-chain anchor lookup failed; verifying against local state only")
+		return "", models.AnchorUnknown
 	}
-
-	// The job is processed asynchronously by a worker, so it must NOT inherit
-	// the caller's (HTTP request) context — that gets cancelled as soon as the
-	// handler returns, which would kill the in-flight batch. Only the enqueue
-	// below is gated by the caller's context.
-	job := &BatchJob{
-		BatchSize: batchSize,
-		Context:   context.Background(),
+	root, _ := resp.Data["merkle_root"].(string)
+	if root == "" {
+		return "", models.AnchorUnknown
 	}
-
-	select {
-	case bp.jobQueue <- job:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		return fmt.Errorf("job queue is full")
-	}
+	return root, models.AnchorAnchored
 }
 
-// processBatch processes a single batch
-func (bp *BatchProcessor) processBatch(ctx context.Context, batchSize int) error {
-	startTime := time.Now()
-
-	// Find logs without batch
-	logs, err := bp.collections.FindLogsWithoutBatch(ctx, batchSize)
-	if err != nil {
-		return fmt.Errorf("failed to find logs: %w", err)
-	}
-
-	if len(logs) == 0 {
-		return nil // No logs to batch
-	}
-
-	// Generate batch ID
-	batchID := fmt.Sprintf("batch_%s", uuid.New().String()[:8])
-
-	// Calculate Merkle root
-	merkleRoot, _ := models.CalculateMerkleRoot(logs)
-
-	// Extract log IDs
-	logIDs := make([]string, len(logs))
-	for i, log := range logs {
-		logIDs[i] = log.ID
-	}
-
-	// Update logs with batch information
-	if err := bp.collections.UpdateLogBatch(ctx, logIDs, batchID, merkleRoot); err != nil {
-		return fmt.Errorf("failed to update logs: %w", err)
-	}
-
-	// Store batch in Fabric blockchain
-	if bp.fabricClient != nil {
-		fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-
-		channel := bp.fabricClient.Config.ChannelForTenant("default")
-		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, channel, batchID, merkleRoot, len(logs), logIDs)
-		if err != nil {
-			bp.incrementFailedBatch()
-			return fmt.Errorf("failed to store batch in Fabric: %w", err)
-		}
-
-		// Update sync control status
-		if err := bp.collections.UpdateSyncStatusBatch(ctx, logIDs, models.SyncStatusSynced, batchID); err != nil {
-			return fmt.Errorf("failed to update sync status: %w", err)
-		}
-
-		bp.notifyAnchored("default", "logs", batchID, merkleRoot, len(logs), inv.TxID)
-		metrics.RecordAnchoredBatch("default", "logs", len(logs))
-	}
-
-	// Update statistics
-	bp.updateStats(batchID, len(logs), startTime)
-
-	zlog.Info().
-		Str("batch_id", batchID).
-		Int("logs", len(logs)).
-		Str("merkle_root", merkleRoot).
-		Dur("took", time.Since(startTime)).
-		Msg("batch created")
-
-	return nil
-}
-
-// VerifyBatch verifies a batch's integrity
-func (bp *BatchProcessor) VerifyBatch(ctx context.Context, batchID string) (*models.VerifyBatchResponse, error) {
-	// Find logs in batch
-	logs, err := bp.collections.FindLogsByBatchID(ctx, batchID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find logs: %w", err)
-	}
-
-	if len(logs) == 0 {
-		return nil, fmt.Errorf("batch not found: %s", batchID)
-	}
-
-	// Get original Merkle root
-	originalMerkleRoot := logs[0].MerkleRoot
-
-	// Recalculate Merkle root
-	recalculatedMerkleRoot, _ := models.CalculateMerkleRoot(logs)
-
-	// Compare
-	isValid := originalMerkleRoot == recalculatedMerkleRoot
-	metrics.RecordVerification("logs", isValid)
-
-	integrity := "VALID"
-	message := "Batch integrity verified successfully"
-	if !isValid {
-		integrity = "CORRUPTED"
-		message = "Batch integrity check failed - Merkle root mismatch"
-	}
-
-	response := &models.VerifyBatchResponse{
+// buildVerifyResponse decides integrity from the authoritative source. When the
+// batch is anchored, the on-chain root is the source of truth and the locally
+// stored root is irrelevant (this is what makes tampering both the content AND
+// the stored root detectable). When the ledger cannot be consulted, it falls
+// back to local consistency and says so via AnchorStatus.
+func buildVerifyResponse(batchID string, n int, storedRoot, recalculated, onChainRoot, anchorStatus string) *models.VerifyBatchResponse {
+	resp := &models.VerifyBatchResponse{
 		BatchID:                batchID,
-		IsValid:                isValid,
-		NumLogs:                len(logs),
-		OriginalMerkleRoot:     originalMerkleRoot,
-		RecalculatedMerkleRoot: recalculatedMerkleRoot,
-		Integrity:              integrity,
-		Message:                message,
+		NumLogs:                n,
+		OriginalMerkleRoot:     storedRoot,
+		RecalculatedMerkleRoot: recalculated,
+		OnChainMerkleRoot:      onChainRoot,
+		AnchorStatus:           anchorStatus,
 	}
 
-	return response, nil
-}
-
-// GetBatch retrieves a batch with its logs
-func (bp *BatchProcessor) GetBatch(ctx context.Context, batchID string) (*models.GetBatchResponse, error) {
-	// Find logs in batch
-	logs, err := bp.collections.FindLogsByBatchID(ctx, batchID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find logs: %w", err)
+	switch anchorStatus {
+	case models.AnchorAnchored:
+		resp.IsValid = recalculated == onChainRoot
+		if resp.IsValid {
+			resp.Integrity = models.IntegrityValid
+			resp.Message = "Batch integrity verified against the on-chain anchor"
+		} else {
+			resp.Integrity = models.IntegrityCorrupted
+			resp.Message = "Recomputed Merkle root does not match the on-chain anchor"
+		}
+	case models.AnchorUnanchored:
+		resp.IsValid = false
+		resp.Integrity = models.IntegrityUnanchored
+		resp.Message = "Batch is not anchored on the ledger; integrity cannot be proven"
+	default: // AnchorUnknown
+		resp.IsValid = storedRoot == recalculated
+		if resp.IsValid {
+			resp.Integrity = models.IntegrityValid
+		} else {
+			resp.Integrity = models.IntegrityCorrupted
+		}
+		resp.Message = "Ledger not consulted (anchor status unknown); local consistency only"
 	}
-
-	if len(logs) == 0 {
-		return nil, fmt.Errorf("batch not found: %s", batchID)
-	}
-
-	// Build batch info
-	logIDs := make([]string, len(logs))
-	for i, log := range logs {
-		logIDs[i] = log.ID
-	}
-
-	batch := models.NewMerkleBatch(batchID, logs[0].MerkleRoot, len(logs), logIDs)
-
-	response := &models.GetBatchResponse{
-		Batch:   batch,
-		Logs:    logs,
-		NumLogs: len(logs),
-	}
-
-	return response, nil
+	return resp
 }
 
 // ProcessRecordBatch batches up to batchSize pending records in a domain,
@@ -378,24 +240,21 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, tenant, domain
 		batchSize = bp.config.AutoBatchSize
 	}
 
-	records, err := bp.collections.FindRecordsWithoutBatch(ctx, tenant, domain, batchSize)
+	// Atomically claim pending records into a fresh batch id (F03). The claim is
+	// race-safe, so concurrent batchers never grab the same records.
+	batchID := fmt.Sprintf("%s-%s-%s", tenant, domain, uuid.New().String()[:8])
+	records, err := bp.collections.ClaimRecordsForBatch(ctx, tenant, domain, batchID, batchSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find records: %w", err)
+		return nil, fmt.Errorf("failed to claim records: %w", err)
 	}
 	if len(records) == 0 {
 		return nil, nil
 	}
 
-	batchID := fmt.Sprintf("%s-%s-%s", tenant, domain, uuid.New().String()[:8])
 	merkleRoot, _ := models.CalculateRecordMerkleRoot(records)
-
 	recordIDs := make([]string, len(records))
 	for i, r := range records {
 		recordIDs[i] = r.ID
-	}
-
-	if err := bp.collections.UpdateRecordBatch(ctx, tenant, domain, recordIDs, batchID, merkleRoot); err != nil {
-		return nil, fmt.Errorf("failed to stamp records: %w", err)
 	}
 
 	result := &models.RecordBatchResult{
@@ -406,26 +265,39 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, tenant, domain
 		NumRecords: len(records),
 	}
 
-	if bp.fabricClient != nil {
-		fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-
-		channel := bp.fabricClient.Config.ChannelForTenant(tenant)
-		inv, err := bp.fabricClient.StoreMerkleBatch(fabricCtx, channel, batchID, merkleRoot, len(records), recordIDs)
-		if err != nil {
-			bp.incrementFailedBatch()
-			return nil, fmt.Errorf("failed to anchor record batch in Fabric: %w", err)
+	// No ledger configured: persist the root, leave the batch pending.
+	if bp.anchorer == nil || !bp.anchorer.Enabled() {
+		if err := bp.collections.SetRecordBatchMerkleRoot(ctx, tenant, domain, batchID, merkleRoot); err != nil {
+			return result, err
 		}
-		result.TxID = inv.TxID
-		result.Anchored = true
-		result.Channel = channel
-		// Persist the tx id on the batch's records so audit reports can cite it.
-		if err := bp.collections.SetRecordBatchTxID(ctx, tenant, domain, batchID, inv.TxID); err != nil {
-			zlog.Warn().Err(err).Str("batch_id", batchID).Msg("failed to persist batch tx id")
-		}
-		bp.notifyAnchored(tenant, domain, batchID, merkleRoot, len(records), inv.TxID)
-		metrics.RecordAnchoredBatch(tenant, domain, len(records))
+		bp.updateStats(batchID, len(records), startTime)
+		return result, nil
 	}
+
+	// Anchor AFTER claiming (stamp-after-anchor). On failure the records are
+	// marked failed — kept, never excluded forever — and the reconciler re-drives
+	// them; we never commit a "batched but unanchored" state we can't recover.
+	fabricCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	channel := bp.anchorer.ChannelForTenant(tenant)
+	result.Channel = channel
+
+	inv, err := bp.anchorer.StoreMerkleBatch(fabricCtx, channel, batchID, merkleRoot, len(records), recordIDs)
+	if err != nil {
+		bp.incrementFailedBatch()
+		if mErr := bp.collections.MarkRecordBatchFailed(ctx, tenant, domain, batchID, merkleRoot); mErr != nil {
+			zlog.Error().Err(mErr).Str("batch_id", batchID).Msg("failed to mark batch failed")
+		}
+		return result, fmt.Errorf("failed to anchor record batch in Fabric: %w", err)
+	}
+
+	if err := bp.collections.SetRecordBatchAnchored(ctx, tenant, domain, batchID, merkleRoot, inv.TxID); err != nil {
+		zlog.Warn().Err(err).Str("batch_id", batchID).Msg("anchored but failed to persist status/tx id")
+	}
+	result.TxID = inv.TxID
+	result.Anchored = true
+	bp.notifyAnchored(tenant, domain, batchID, merkleRoot, len(records), inv.TxID)
+	metrics.RecordAnchoredBatch(tenant, domain, len(records))
 
 	bp.updateStats(batchID, len(records), startTime)
 	zlog.Info().
@@ -452,42 +324,73 @@ func (bp *BatchProcessor) VerifyRecordBatch(ctx context.Context, tenant, domain,
 		return nil, fmt.Errorf("batch not found: %s/%s/%s", tenant, domain, batchID)
 	}
 
-	original := records[0].MerkleRoot
+	storedRoot := records[0].MerkleRoot
 	recalculated, _ := models.CalculateRecordMerkleRoot(records)
-	isValid := original == recalculated
-	metrics.RecordVerification(domain, isValid)
 
-	integrity := "VALID"
-	message := "Batch integrity verified successfully"
-	if !isValid {
-		integrity = "CORRUPTED"
-		message = "Batch integrity check failed - Merkle root mismatch"
+	channel := ""
+	if bp.anchorer != nil {
+		channel = bp.anchorer.ChannelForTenant(tenant)
 	}
+	onChainRoot, anchorStatus := bp.anchoredRoot(ctx, channel, batchID)
 
-	return &models.VerifyBatchResponse{
-		BatchID:                batchID,
-		IsValid:                isValid,
-		NumLogs:                len(records),
-		OriginalMerkleRoot:     original,
-		RecalculatedMerkleRoot: recalculated,
-		Integrity:              integrity,
-		Message:                message,
-	}, nil
+	resp := buildVerifyResponse(batchID, len(records), storedRoot, recalculated, onChainRoot, anchorStatus)
+	metrics.RecordVerification(domain, resp.IsValid)
+	return resp, nil
 }
 
-// ListBatches lists all batches
-func (bp *BatchProcessor) ListBatches(ctx context.Context) (*models.ListBatchesResponse, error) {
-	batches, err := bp.collections.AggregateBatches(ctx)
+// ReconcileBatches re-drives batches that were claimed but not anchored (status
+// pending or failed) by re-submitting each to the ledger. Thanks to the
+// write-once anchor (F02), a batch that is in fact already on-chain returns an
+// "already anchored" error, which the reconciler treats as success and stops
+// retrying. Genuine failures are left for the next cycle.
+func (bp *BatchProcessor) ReconcileBatches(ctx context.Context) error {
+	if bp.anchorer == nil || !bp.anchorer.Enabled() {
+		return nil
+	}
+	scopes, err := bp.collections.FindUnanchoredBatchScopes(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to aggregate batches: %w", err)
+		return fmt.Errorf("failed to list unanchored batches: %w", err)
 	}
+	for _, s := range scopes {
+		records, err := bp.collections.FindRecordsByBatchID(ctx, s.Tenant, s.Domain, s.BatchID)
+		if err != nil || len(records) == 0 {
+			continue
+		}
+		// Re-submit the ORIGINAL stored root (not a recompute), so the on-chain
+		// root matches what this batch committed at creation.
+		root := records[0].MerkleRoot
+		ids := make([]string, len(records))
+		for i, r := range records {
+			ids[i] = r.ID
+		}
+		channel := bp.anchorer.ChannelForTenant(s.Tenant)
 
-	response := &models.ListBatchesResponse{
-		Batches:      batches,
-		TotalBatches: len(batches),
+		inv, err := bp.anchorer.StoreMerkleBatch(ctx, channel, s.BatchID, root, len(records), ids)
+		if err != nil {
+			if isAlreadyAnchored(err) {
+				if sErr := bp.collections.SetRecordBatchAnchored(ctx, s.Tenant, s.Domain, s.BatchID, root, records[0].TxID); sErr != nil {
+					zlog.Error().Err(sErr).Str("batch_id", s.BatchID).Msg("reconcile: failed to sync already-anchored status")
+				}
+				continue
+			}
+			zlog.Warn().Err(err).Str("batch_id", s.BatchID).Msg("reconcile: re-anchor failed, will retry")
+			continue
+		}
+		if err := bp.collections.SetRecordBatchAnchored(ctx, s.Tenant, s.Domain, s.BatchID, root, inv.TxID); err != nil {
+			zlog.Error().Err(err).Str("batch_id", s.BatchID).Msg("reconcile: failed to persist anchored status")
+			continue
+		}
+		bp.notifyAnchored(s.Tenant, s.Domain, s.BatchID, root, len(records), inv.TxID)
+		metrics.RecordAnchoredBatch(s.Tenant, s.Domain, len(records))
+		zlog.Info().Str("batch_id", s.BatchID).Str("tx_id", inv.TxID).Msg("reconcile: batch anchored")
 	}
+	return nil
+}
 
-	return response, nil
+// isAlreadyAnchored reports whether an anchor error is the write-once guard (F02),
+// meaning the batch is already committed on-chain.
+func isAlreadyAnchored(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "already anchored")
 }
 
 // GetStats returns processor statistics
@@ -498,7 +401,7 @@ func (bp *BatchProcessor) GetStats() *ProcessorStats {
 	// Create a copy to avoid race conditions
 	return &ProcessorStats{
 		TotalBatches:     bp.stats.TotalBatches,
-		TotalLogs:        bp.stats.TotalLogs,
+		TotalRecords:     bp.stats.TotalRecords,
 		FailedBatches:    bp.stats.FailedBatches,
 		LastBatchTime:    bp.stats.LastBatchTime,
 		LastBatchSize:    bp.stats.LastBatchSize,
@@ -508,14 +411,14 @@ func (bp *BatchProcessor) GetStats() *ProcessorStats {
 }
 
 // updateStats updates processor statistics
-func (bp *BatchProcessor) updateStats(batchID string, numLogs int, startTime time.Time) {
+func (bp *BatchProcessor) updateStats(batchID string, numRecords int, startTime time.Time) {
 	bp.statsMu.Lock()
 	defer bp.statsMu.Unlock()
 
 	bp.stats.TotalBatches++
-	bp.stats.TotalLogs += numLogs
+	bp.stats.TotalRecords += numRecords
 	bp.stats.LastBatchTime = startTime
-	bp.stats.LastBatchSize = numLogs
+	bp.stats.LastBatchSize = numRecords
 	bp.stats.LastBatchID = batchID
 }
 

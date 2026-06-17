@@ -7,6 +7,8 @@ server:
   read_timeout: 30s
   write_timeout: 30s
   shutdown_timeout: 10s
+  max_body_bytes: 1048576          # 1 MiB request body cap (0 disables)
+  cors_allowed_origins: ["*"]      # "*" = any origin without credentials; list explicit origins to enable credentialed CORS
 
 mongodb:
   url: "mongodb://localhost:27017"

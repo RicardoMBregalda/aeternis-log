@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,9 +12,101 @@ import (
 	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
+
+// TestClaimRecordsForBatchAtomic proves F03's atomic claim: many concurrent
+// batchers contending for the same pending pool each get a disjoint slice — no
+// record is ever claimed by two batches (which would cause a double-anchor).
+func TestClaimRecordsForBatchAtomic(t *testing.T) {
+	cfg := &config.MongoDBConfig{
+		URL:                      "mongodb://localhost:27017",
+		Database:                 "logdb_test",
+		Collection:               "logs_test",
+		RecordsCollection:        "records_claim_test",
+		SyncControlCollection:    "sync_control_test",
+		MinPoolSize:              5,
+		MaxPoolSize:              20,
+		MaxIdleTimeMS:            60000,
+		ServerSelectionTimeoutMS: 5000,
+		ConnectTimeout:           10 * time.Second,
+		SocketTimeout:            30 * time.Second,
+	}
+	client, err := NewMongoClient(cfg)
+	if err != nil {
+		t.Skipf("MongoDB not available: %v", err)
+		return
+	}
+	defer client.Close(context.Background())
+
+	collections := NewCollections(client)
+	ctx := context.Background()
+	client.Database.Collection(cfg.RecordsCollection).Drop(ctx)
+
+	const total = 30
+	for i := 0; i < total; i++ {
+		rec := &models.Record{
+			Tenant: "acme", Domain: "claim", ID: fmt.Sprintf("r-%02d", i),
+			Timestamp: time.Now().Format(time.RFC3339), Source: "t",
+			Payload:   map[string]interface{}{"n": i},
+			CreatedAt: models.FlexTime{Time: time.Now()},
+		}
+		rec.Hash = rec.CalculateHash()
+		if err := collections.InsertRecord(ctx, rec); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	const workers = 5
+	var wg sync.WaitGroup
+	claimedBy := make([]map[string]bool, workers)
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			batchID := fmt.Sprintf("batch-%d", w)
+			claimed, err := collections.ClaimRecordsForBatch(ctx, "acme", "claim", batchID, total)
+			if err != nil {
+				t.Errorf("worker %d claim: %v", w, err)
+				return
+			}
+			m := make(map[string]bool, len(claimed))
+			for _, r := range claimed {
+				m[r.ID] = true
+				if r.BatchID != batchID {
+					t.Errorf("record %s: batch_id %q, want %q", r.ID, r.BatchID, batchID)
+				}
+				if r.AnchorStatus != models.RecordAnchorPending {
+					t.Errorf("record %s: status %q, want pending", r.ID, r.AnchorStatus)
+				}
+			}
+			claimedBy[w] = m
+		}(w)
+	}
+	wg.Wait()
+
+	seen := map[string]int{}
+	claimedTotal := 0
+	for _, m := range claimedBy {
+		claimedTotal += len(m)
+		for id := range m {
+			seen[id]++
+		}
+	}
+	if claimedTotal != total {
+		t.Errorf("claimed total = %d, want %d (every record claimed exactly once)", claimedTotal, total)
+	}
+	for id, n := range seen {
+		if n != 1 {
+			t.Errorf("record %s claimed by %d batches, want 1 (double-claim)", id, n)
+		}
+	}
+	if pending, err := collections.FindRecordsWithoutBatch(ctx, "acme", "claim", 1000); err != nil {
+		t.Fatalf("pending: %v", err)
+	} else if len(pending) != 0 {
+		t.Errorf("expected 0 pending after claims, got %d", len(pending))
+	}
+}
 
 // TestMongoClientConnection tests MongoDB connection
 func TestMongoClientConnection(t *testing.T) {
@@ -55,307 +148,6 @@ func TestMongoClientConnection(t *testing.T) {
 	}
 	if !stats["connected"].(bool) {
 		t.Error("Expected connected to be true")
-	}
-}
-
-// TestCollectionsOperations tests CRUD operations
-func TestCollectionsOperations(t *testing.T) {
-	cfg := &config.MongoDBConfig{
-		URL:                       "mongodb://localhost:27017",
-		Database:                  "logdb_test",
-		Collection:                "logs_test",
-		SyncControlCollection:     "sync_control_test",
-		MinPoolSize:               5,
-		MaxPoolSize:               10,
-		MaxIdleTimeMS:             60000,
-		ServerSelectionTimeoutMS:  5000,
-		ConnectTimeout:            10 * time.Second,
-		SocketTimeout:             30 * time.Second,
-	}
-
-	client, err := NewMongoClient(cfg)
-	if err != nil {
-		t.Skipf("MongoDB not available: %v", err)
-		return
-	}
-	defer client.Close(context.Background())
-
-	collections := NewCollections(client)
-	ctx := context.Background()
-
-	// Clean up before test
-	client.Database.Collection(cfg.Collection).Drop(ctx)
-	client.Database.Collection(cfg.SyncControlCollection).Drop(ctx)
-
-	// Re-create indexes
-	if err := client.CreateIndexes(ctx); err != nil {
-		t.Fatalf("Failed to create indexes: %v", err)
-	}
-
-	// Test log insertion
-	log := &models.Log{
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().Format(time.RFC3339),
-		Level:     models.LogLevelInfo,
-		Message:   "Test log message",
-		Source:    "test-service",
-		Metadata: map[string]interface{}{
-			"test": "data",
-		},
-		CreatedAt: models.FlexTime{Time: time.Now()},
-	}
-	log.Hash = log.CalculateHash()
-
-	if err := collections.InsertLog(ctx, log); err != nil {
-		t.Fatalf("Failed to insert log: %v", err)
-	}
-
-	// Test find by ID
-	foundLog, err := collections.FindLogByID(ctx, log.ID)
-	if err != nil {
-		t.Fatalf("Failed to find log: %v", err)
-	}
-	if foundLog.ID != log.ID {
-		t.Errorf("Expected log ID %s, got %s", log.ID, foundLog.ID)
-	}
-
-	// Test count
-	count, err := collections.CountLogs(ctx, map[string]interface{}{})
-	if err != nil {
-		t.Fatalf("Failed to count logs: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("Expected 1 log, got %d", count)
-	}
-
-	// Test sync control insertion
-	syncControl := &models.SyncControl{
-		LogID:      log.ID,
-		SyncStatus: models.SyncStatusPending,
-		CreatedAt:  time.Now(),
-	}
-
-	if err := collections.InsertSyncControl(ctx, syncControl); err != nil {
-		t.Fatalf("Failed to insert sync control: %v", err)
-	}
-
-	// Test find sync control
-	foundSync, err := collections.FindSyncControlByLogID(ctx, log.ID)
-	if err != nil {
-		t.Fatalf("Failed to find sync control: %v", err)
-	}
-	if foundSync.LogID != log.ID {
-		t.Errorf("Expected log ID %s, got %s", log.ID, foundSync.LogID)
-	}
-
-	// Test update sync status
-	if err := collections.UpdateSyncStatus(ctx, log.ID, models.SyncStatusSynced); err != nil {
-		t.Fatalf("Failed to update sync status: %v", err)
-	}
-
-	// Verify update
-	foundSync, err = collections.FindSyncControlByLogID(ctx, log.ID)
-	if err != nil {
-		t.Fatalf("Failed to find sync control after update: %v", err)
-	}
-	if foundSync.SyncStatus != models.SyncStatusSynced {
-		t.Errorf("Expected status %s, got %s", models.SyncStatusSynced, foundSync.SyncStatus)
-	}
-
-	// Test aggregate stats
-	stats, err := collections.AggregateSyncStats(ctx)
-	if err != nil {
-		t.Fatalf("Failed to aggregate sync stats: %v", err)
-	}
-	if stats.Synced != 1 {
-		t.Errorf("Expected 1 synced log, got %d", stats.Synced)
-	}
-}
-
-// TestSoftDeleteLog verifies that soft delete preserves the document, hides it
-// from active listings, and is idempotent for already-deleted/missing logs.
-func TestSoftDeleteLog(t *testing.T) {
-	cfg := &config.MongoDBConfig{
-		URL:                      "mongodb://localhost:27017",
-		Database:                 "logdb_test",
-		Collection:               "logs_test",
-		SyncControlCollection:    "sync_control_test",
-		MinPoolSize:              5,
-		MaxPoolSize:              10,
-		MaxIdleTimeMS:            60000,
-		ServerSelectionTimeoutMS: 5000,
-		ConnectTimeout:           10 * time.Second,
-		SocketTimeout:            30 * time.Second,
-	}
-
-	client, err := NewMongoClient(cfg)
-	if err != nil {
-		t.Skipf("MongoDB not available: %v", err)
-		return
-	}
-	defer client.Close(context.Background())
-
-	collections := NewCollections(client)
-	ctx := context.Background()
-	client.Database.Collection(cfg.Collection).Drop(ctx)
-
-	log := &models.Log{
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().Format(time.RFC3339),
-		Level:     models.LogLevelInfo,
-		Message:   "soft delete test",
-		Source:    "test-service",
-		CreatedAt: models.FlexTime{Time: time.Now()},
-	}
-	log.Hash = log.CalculateHash()
-	if err := collections.InsertLog(ctx, log); err != nil {
-		t.Fatalf("insert: %v", err)
-	}
-
-	// Soft delete sets deleted_at and keeps the document.
-	if err := collections.SoftDeleteLog(ctx, log.ID); err != nil {
-		t.Fatalf("soft delete: %v", err)
-	}
-
-	found, err := collections.FindLogByID(ctx, log.ID)
-	if err != nil {
-		t.Fatalf("document should still exist after soft delete: %v", err)
-	}
-	if found.DeletedAt == nil {
-		t.Error("expected deleted_at to be set")
-	}
-
-	// Listings that exclude deleted must not return it.
-	active, err := collections.FindLogs(ctx, bson.M{"deleted_at": bson.M{"$exists": false}}, NewFindOptions())
-	if err != nil {
-		t.Fatalf("find active: %v", err)
-	}
-	for _, l := range active {
-		if l.ID == log.ID {
-			t.Error("soft-deleted log should not appear in active listing")
-		}
-	}
-
-	// Re-deleting or deleting a missing log reports ErrNoDocuments.
-	if err := collections.SoftDeleteLog(ctx, log.ID); !errors.Is(err, mongo.ErrNoDocuments) {
-		t.Errorf("re-delete: expected ErrNoDocuments, got %v", err)
-	}
-	if err := collections.SoftDeleteLog(ctx, "does-not-exist"); !errors.Is(err, mongo.ErrNoDocuments) {
-		t.Errorf("missing log: expected ErrNoDocuments, got %v", err)
-	}
-}
-
-// TestKeysetPagination walks the (created_at desc, id desc) keyset filter used
-// by cursor pagination and verifies every log is returned exactly once, in
-// order, with no overlap across pages — including ties on the same millisecond.
-func TestKeysetPagination(t *testing.T) {
-	cfg := &config.MongoDBConfig{
-		URL:                      "mongodb://localhost:27017",
-		Database:                 "logdb_test",
-		Collection:               "logs_test",
-		SyncControlCollection:    "sync_control_test",
-		MinPoolSize:              5,
-		MaxPoolSize:              10,
-		MaxIdleTimeMS:            60000,
-		ServerSelectionTimeoutMS: 5000,
-		ConnectTimeout:           10 * time.Second,
-		SocketTimeout:            30 * time.Second,
-	}
-
-	client, err := NewMongoClient(cfg)
-	if err != nil {
-		t.Skipf("MongoDB not available: %v", err)
-		return
-	}
-	defer client.Close(context.Background())
-
-	collections := NewCollections(client)
-	ctx := context.Background()
-	client.Database.Collection(cfg.Collection).Drop(ctx)
-
-	const total = 10
-	base := time.Now().UTC().Truncate(time.Millisecond)
-	for i := 0; i < total; i++ {
-		ts := base.Add(time.Duration(i) * time.Millisecond)
-		if i == 4 {
-			ts = base.Add(3 * time.Millisecond) // share a millisecond with i==3
-		}
-		log := &models.Log{
-			ID:        fmt.Sprintf("log-%02d-%s", i, uuid.New().String()),
-			Timestamp: ts.Format(time.RFC3339),
-			Level:     models.LogLevelInfo,
-			Message:   "x",
-			Source:    "keyset",
-			CreatedAt: models.FlexTime{Time: ts},
-		}
-		log.Hash = log.CalculateHash()
-		if err := collections.InsertLog(ctx, log); err != nil {
-			t.Fatalf("insert: %v", err)
-		}
-	}
-
-	baseFilter := bson.M{"deleted_at": bson.M{"$exists": false}, "source": "keyset"}
-	sort := bson.D{{Key: "created_at", Value: -1}, {Key: "id", Value: -1}}
-	const limit = int64(3)
-
-	seen := make(map[string]bool)
-	var paged []string
-	var lastMs int64
-	var lastID string
-	first := true
-
-	for {
-		filter := bson.M{}
-		for k, v := range baseFilter {
-			filter[k] = v
-		}
-		if !first {
-			boundary := primitive.NewDateTimeFromTime(time.UnixMilli(lastMs).UTC())
-			filter["$or"] = bson.A{
-				bson.M{"created_at": bson.M{"$lt": boundary}},
-				bson.M{"created_at": boundary, "id": bson.M{"$lt": lastID}},
-			}
-		}
-
-		page, err := collections.FindLogs(ctx, filter, NewFindOptions().SetSort(sort).SetLimit(limit))
-		if err != nil {
-			t.Fatalf("page query: %v", err)
-		}
-		if len(page) == 0 {
-			break
-		}
-		for _, l := range page {
-			if seen[l.ID] {
-				t.Errorf("duplicate id across pages: %s", l.ID)
-			}
-			seen[l.ID] = true
-			paged = append(paged, l.ID)
-		}
-		last := page[len(page)-1]
-		lastMs = last.CreatedAt.UnixMilli()
-		lastID = last.ID
-		first = false
-		if len(page) < int(limit) {
-			break
-		}
-	}
-
-	if len(seen) != total {
-		t.Errorf("expected %d unique logs across pages, got %d", total, len(seen))
-	}
-
-	// Paged order must match a single sorted query over the whole set.
-	all, err := collections.FindLogs(ctx, baseFilter, NewFindOptions().SetSort(sort))
-	if err != nil {
-		t.Fatalf("sorted query: %v", err)
-	}
-	if len(all) != len(paged) {
-		t.Fatalf("sorted=%d paged=%d", len(all), len(paged))
-	}
-	for i := range all {
-		if all[i].ID != paged[i] {
-			t.Errorf("order mismatch at %d: paged=%s sorted=%s", i, paged[i], all[i].ID)
-		}
 	}
 }
 

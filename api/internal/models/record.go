@@ -6,6 +6,20 @@ import (
 	"fmt"
 )
 
+// Anchor lifecycle states for a batched record (see Record.AnchorStatus).
+const (
+	RecordAnchorPending  = "pending"  // claimed into a batch, not yet anchored
+	RecordAnchorAnchored = "anchored" // batch committed on the ledger
+	RecordAnchorFailed   = "failed"   // anchor attempt failed; reconciler retries
+)
+
+// CurrentHashVersion is the integrity-hash scheme new records are written with.
+// v2 length-prefixes the hashed fields (so content cannot shift across field
+// boundaries undetected) and domain-separates Merkle leaves (0x00) from internal
+// nodes (0x01), promoting odd nodes instead of duplicating the last
+// (CVE-2012-2459). Absent/0 (legacy v1) was a plain field concatenation.
+const CurrentHashVersion = 2
+
 // Record is the generic, domain-agnostic auditable record at the core of the
 // Tamper-Evident Data Anchoring pattern. A Log is just a Record in the "logs"
 // domain; any client can anchor arbitrary records under their own domain.
@@ -22,10 +36,18 @@ type Record struct {
 	// the whole payload. It is stored so the hash stays reproducible on verify.
 	HashFields []string `json:"hash_fields,omitempty" bson:"hash_fields,omitempty"`
 	Hash       string   `json:"hash" bson:"hash"`
+	// HashVersion is the scheme used to compute Hash and the batch Merkle root.
+	// Absent/0 means legacy v1; new records use CurrentHashVersion. Verification
+	// recomputes with the recorded version so old anchors stay valid.
+	HashVersion int `json:"hash_version,omitempty" bson:"hash_version,omitempty"`
 
 	CreatedAt  FlexTime  `json:"created_at" bson:"created_at"`
 	BatchID    string    `json:"batch_id,omitempty" bson:"batch_id,omitempty"`
 	MerkleRoot string    `json:"merkle_root,omitempty" bson:"merkle_root,omitempty"`
+	// AnchorStatus is the batch's anchoring lifecycle: pending (claimed, not yet
+	// anchored), anchored (committed on the ledger), or failed (anchor attempt
+	// failed, awaiting reconciliation). Empty on never-batched records.
+	AnchorStatus string `json:"anchor_status,omitempty" bson:"anchor_status,omitempty"`
 	// TxID is the Fabric transaction that anchored the batch (set after anchoring).
 	TxID       string    `json:"tx_id,omitempty" bson:"tx_id,omitempty"`
 	BatchedAt  *FlexTime `json:"batched_at,omitempty" bson:"batched_at,omitempty"`
@@ -55,12 +77,38 @@ func (r *Record) canonicalPayload() string {
 	return string(b)
 }
 
-// CalculateHash computes the SHA-256 integrity hash over the record's identity
-// fields and its canonical payload (optionally restricted to HashFields).
+// CalculateHash computes the record's integrity hash under the current scheme.
 func (r *Record) CalculateHash() string {
+	return r.calculateHashV2()
+}
+
+// calculateHashV1 is the legacy scheme: a plain concatenation of the identity
+// fields and the canonical payload. Kept only to verify pre-v2 anchored batches.
+func (r *Record) calculateHashV1() string {
 	content := r.ID + r.Timestamp + r.Source + r.canonicalPayload()
 	hash := sha256.Sum256([]byte(content))
 	return fmt.Sprintf("%x", hash)
+}
+
+// calculateHashV2 length-prefixes each hashed field — so content cannot shift
+// across field boundaries without changing the hash — and tags the leaf with a
+// 0x00 domain separator so it can never be confused with a Merkle internal node.
+func (r *Record) calculateHashV2() string {
+	h := sha256.New()
+	h.Write([]byte{merkleLeafPrefix})
+	writeLenPrefixed(h, r.ID)
+	writeLenPrefixed(h, r.Timestamp)
+	writeLenPrefixed(h, r.Source)
+	writeLenPrefixed(h, r.canonicalPayload())
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// hashForVersion recomputes the record's leaf hash under a specific scheme version.
+func (r *Record) hashForVersion(v int) string {
+	if v >= 2 {
+		return r.calculateHashV2()
+	}
+	return r.calculateHashV1()
 }
 
 // Validate checks the required fields of a record.
@@ -103,11 +151,24 @@ type ListRecordsResponse struct {
 // (instead of trusting the stored hash) is what makes the batch tamper-evident:
 // if a record's content changed, its leaf hash — and the root — change too.
 func CalculateRecordMerkleRoot(records []*Record) (string, []string) {
+	v := batchHashVersion(records)
 	hashes := make([]string, len(records))
 	for i, r := range records {
-		hashes[i] = r.CalculateHash()
+		hashes[i] = r.hashForVersion(v)
+	}
+	if v >= 2 {
+		return BuildMerkleTreeV2(hashes), hashes
 	}
 	return BuildMerkleTree(hashes), hashes
+}
+
+// batchHashVersion is the scheme a batch was created under (taken from its
+// records; absent/0 means legacy v1).
+func batchHashVersion(records []*Record) int {
+	if len(records) > 0 && records[0].HashVersion >= 2 {
+		return records[0].HashVersion
+	}
+	return 1
 }
 
 // RecordBatchResult describes a Merkle batch of records anchored to Fabric.

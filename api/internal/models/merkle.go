@@ -2,8 +2,10 @@ package models
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"time"
 )
 
@@ -39,70 +41,37 @@ type CreateBatchResponse struct {
 	Message    string   `json:"message"`
 }
 
-// VerifyBatchResponse represents the response from batch verification
+// Integrity outcomes reported by batch verification.
+const (
+	IntegrityValid      = "VALID"      // recomputed root matches the authoritative anchor
+	IntegrityCorrupted  = "CORRUPTED"  // recomputed root does NOT match the anchor
+	IntegrityUnanchored = "UNANCHORED" // the batch is not (yet) anchored on the ledger
+)
+
+// Anchor status: where the authoritative Merkle root was (or wasn't) read from.
+const (
+	AnchorAnchored   = "ANCHORED" // root read from the on-chain ledger (authoritative)
+	AnchorUnanchored = "UNANCHORED"
+	AnchorUnknown    = "UNKNOWN" // ledger unavailable or sync disabled — on-chain proof not consulted
+)
+
+// VerifyBatchResponse represents the response from batch verification.
+//
+// Integrity is decided against OnChainMerkleRoot when AnchorStatus == ANCHORED
+// (the ledger is the source of truth). When the ledger cannot be consulted
+// (AnchorStatus == UNKNOWN) the result falls back to a local-consistency check
+// between OriginalMerkleRoot and RecalculatedMerkleRoot, and the caller is told
+// the on-chain anchor was not read.
 type VerifyBatchResponse struct {
-	BatchID               string `json:"batch_id"`
-	IsValid               bool   `json:"is_valid"`
-	NumLogs               int    `json:"num_logs"`
-	OriginalMerkleRoot    string `json:"original_merkle_root"`
+	BatchID                string `json:"batch_id"`
+	IsValid                bool   `json:"is_valid"`
+	NumLogs                int    `json:"num_logs"`
+	OriginalMerkleRoot     string `json:"original_merkle_root"`
 	RecalculatedMerkleRoot string `json:"recalculated_merkle_root"`
-	Integrity             string `json:"integrity"`
-	Message               string `json:"message"`
-}
-
-// ListBatchesResponse represents the response for listing batches
-type ListBatchesResponse struct {
-	Batches      []*BatchInfo `json:"batches"`
-	TotalBatches int          `json:"total_batches"`
-}
-
-// GetBatchResponse represents the response for getting a specific batch
-type GetBatchResponse struct {
-	Batch   *MerkleBatch `json:"batch"`
-	Logs    []*Log       `json:"logs"`
-	NumLogs int          `json:"num_logs"`
-}
-
-// NewMerkleBatch creates a new MerkleBatch
-func NewMerkleBatch(batchID, merkleRoot string, numLogs int, logIDs []string) *MerkleBatch {
-	now := time.Now().UTC()
-	return &MerkleBatch{
-		BatchID:    batchID,
-		MerkleRoot: merkleRoot,
-		Timestamp:  now.Format(time.RFC3339),
-		NumLogs:    numLogs,
-		LogIDs:     logIDs,
-		CreatedAt:  now,
-	}
-}
-
-// CalculateLogHash calculates SHA256 hash of a log for Merkle Tree
-func CalculateLogHash(log *Log) string {
-	// Build content string matching Python implementation
-	content := fmt.Sprintf("%s%s%s%s%s",
-		log.ID,
-		log.Timestamp,
-		log.Source,
-		log.Level,
-		log.Message,
-	)
-
-	// Add metadata if present
-	if len(log.Metadata) > 0 {
-		metadataJSON, err := json.Marshal(log.Metadata)
-		if err == nil {
-			content += string(metadataJSON)
-		}
-	}
-
-	// Add stacktrace if present
-	if log.Stacktrace != "" {
-		content += log.Stacktrace
-	}
-
-	// Calculate SHA256
-	hash := sha256.Sum256([]byte(content))
-	return fmt.Sprintf("%x", hash)
+	OnChainMerkleRoot      string `json:"on_chain_merkle_root,omitempty"`
+	AnchorStatus           string `json:"anchor_status"`
+	Integrity              string `json:"integrity"`
+	Message                string `json:"message"`
 }
 
 // CombineHashes combines two hashes using SHA256
@@ -147,14 +116,54 @@ func BuildMerkleTree(hashes []string) string {
 	return currentLevel[0]
 }
 
-// CalculateMerkleRoot calculates the Merkle root from a list of logs
-func CalculateMerkleRoot(logs []*Log) (string, []string) {
-	hashes := make([]string, len(logs))
-	for i, log := range logs {
-		hashes[i] = CalculateLogHash(log)
+// Merkle tree domain separators (v2): leaves and internal nodes are hashed with
+// distinct prefixes so a precomputed internal node can never be passed off as a
+// leaf (and vice versa).
+const (
+	merkleLeafPrefix byte = 0x00
+	merkleNodePrefix byte = 0x01
+)
+
+// writeLenPrefixed writes len(s) as 8 big-endian bytes followed by s, so that
+// concatenated fields have unambiguous boundaries in the hashed pre-image.
+func writeLenPrefixed(h hash.Hash, s string) {
+	var n [8]byte
+	binary.BigEndian.PutUint64(n[:], uint64(len(s)))
+	h.Write(n[:])
+	h.Write([]byte(s))
+}
+
+// CombineHashesV2 combines two child hashes into an internal Merkle node, tagged
+// with the internal-node domain separator so it cannot be confused with a leaf.
+func CombineHashesV2(left, right string) string {
+	h := sha256.New()
+	h.Write([]byte{merkleNodePrefix})
+	h.Write([]byte(left))
+	h.Write([]byte(right))
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// BuildMerkleTreeV2 builds the Merkle root with internal-node domain separation
+// and promotes an odd trailing node up a level instead of duplicating it — the
+// duplicate-last shortcut is the CVE-2012-2459 second-preimage weakness.
+func BuildMerkleTreeV2(hashes []string) string {
+	if len(hashes) == 0 {
+		return ""
 	}
-	merkleRoot := BuildMerkleTree(hashes)
-	return merkleRoot, hashes
+	level := make([]string, len(hashes))
+	copy(level, hashes)
+	for len(level) > 1 {
+		next := make([]string, 0, (len(level)+1)/2)
+		for i := 0; i < len(level); i += 2 {
+			if i+1 < len(level) {
+				next = append(next, CombineHashesV2(level[i], level[i+1]))
+			} else {
+				next = append(next, level[i]) // promote odd node (no duplication)
+			}
+		}
+		level = next
+	}
+	return level[0]
 }
 
 // Validate validates the MerkleBatch

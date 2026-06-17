@@ -18,6 +18,7 @@ spec:
         app.kubernetes.io/component: api
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/api-secret.yaml") . | sha256sum }}
         {{- if and .Values.metrics.enabled .Values.metrics.podAnnotations }}
         prometheus.io/scrape: "true"
         prometheus.io/port: {{ .Values.api.metricsPort | quote }}
@@ -42,6 +43,13 @@ spec:
             readOnlyRootFilesystem: false
             capabilities:
               drop: ["ALL"]
+          # API keys (AUTH_API_KEYS / AUTH_TENANTS) and the webhook secret
+          # (WEBHOOK_SECRET) come from the app Secret, overriding config.yaml.
+          # optional:true so the pod still starts when no secrets are configured.
+          envFrom:
+            - secretRef:
+                name: {{ include "aeternislog.appSecret" . }}
+                optional: true
           ports:
             - name: http
               containerPort: {{ .Values.api.port }}

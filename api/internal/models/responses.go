@@ -9,20 +9,6 @@ type HealthResponse struct {
 	Services    map[string]interface{} `json:"services"`
 }
 
-// WALStatsResponse represents WAL statistics response
-type WALStatsResponse struct {
-	WALStatistics     map[string]interface{} `json:"wal_statistics"`
-	Status            string                 `json:"status"`
-	DataLossGuarantee string                 `json:"data_loss_guarantee"`
-}
-
-// StatsResponse represents system statistics response
-type StatsResponse struct {
-	TotalLogs             int                    `json:"total_logs"`
-	FabricSyncStatus      map[string]int         `json:"fabric_sync_status"`
-	OptimizationsActive   bool                   `json:"optimizations_active"`
-}
-
 // ErrorResponse represents an error response
 type ErrorResponse struct {
 	Error   string `json:"error"`
@@ -35,15 +21,4 @@ type SuccessResponse struct {
 	Status  string      `json:"status"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
-}
-
-// ListLogsResponse represents the response for listing logs
-type ListLogsResponse struct {
-	Logs   []*Log `json:"logs"`
-	Total  int    `json:"total"`
-	Limit  int    `json:"limit"`
-	Offset int    `json:"offset"`
-	// NextCursor is an opaque cursor for keyset pagination; present only when a
-	// further page may exist. Pass it back as the `cursor` query parameter.
-	NextCursor string `json:"next_cursor,omitempty"`
 }

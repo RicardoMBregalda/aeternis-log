@@ -88,6 +88,16 @@ func (fc *FabricClient) GetBatchHistory(ctx context.Context, channel, batchID st
 	return fc.QueryChaincode(ctx, channel, "getBatchHistory", []string{batchID})
 }
 
+// Enabled reports whether Fabric anchoring is turned on.
+func (fc *FabricClient) Enabled() bool {
+	return fc.Config.SyncEnabled
+}
+
+// ChannelForTenant resolves the Fabric channel a tenant anchors to.
+func (fc *FabricClient) ChannelForTenant(tenant string) string {
+	return fc.Config.ChannelForTenant(tenant)
+}
+
 // HealthCheck performs a health check on the Fabric connection.
 func (fc *FabricClient) HealthCheck(ctx context.Context) error {
 	if !fc.Config.SyncEnabled {
