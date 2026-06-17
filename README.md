@@ -93,7 +93,7 @@ curl -X POST http://localhost:5001/api/v1/contracts/records \
   -d '{"source": "crm", "payload": {"party": "acme", "amount": 100}, "hash_fields": ["party", "amount"]}'
 ```
 
-The hash is `SHA-256(id | timestamp | source | canonical(payload))`. Optional `hash_fields` restricts which payload keys feed the hash (so other fields can change without breaking it); the canonical payload uses sorted keys, so the hash is independent of key order.
+The integrity hash (scheme **v2**) is `SHA-256(0x00 ‖ len-prefixed(id, timestamp, source, canonical(payload)))` — each field is length-prefixed so content cannot shift across field boundaries undetected, and the `0x00` tag domain-separates a Merkle leaf from an internal node (`0x01`); the tree promotes an odd trailing node instead of duplicating it (CVE-2012-2459). The scheme is recorded per record as `hash_version`, so batches anchored under the older v1 scheme still verify. Optional `hash_fields` restricts which payload keys feed the hash (so other fields can change without breaking it); the canonical payload uses sorted keys, so the hash is independent of key order.
 
 Records are batched per domain (automatically, or via `POST .../records/batch`), their Merkle root is anchored on Fabric, and `POST .../records/verify/{batchId}` recomputes the root from current content and compares it with the anchored one — returning `409 CORRUPTED` if anything was tampered.
 

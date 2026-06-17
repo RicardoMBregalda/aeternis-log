@@ -34,9 +34,10 @@ ok := anchor.VerifyRecordsLocally(records, anchoredRoot)
 
 ## Local (trustless) verification
 
-- `(*Record).ComputeHash()` — SHA-256 over `id | timestamp | source | canonical(payload)`,
-  restricted to `HashFields` when set. Canonical JSON has sorted keys, so the hash
-  is independent of payload key order.
+- `(*Record).ComputeHash()` — the v2 scheme: SHA-256 over `0x00` plus each of
+  `id, timestamp, source, canonical(payload)` length-prefixed, restricted to
+  `HashFields` when set. Canonical JSON has sorted keys, so the hash is independent
+  of payload key order. `HashVersion` selects the scheme (absent = legacy v1).
 - `MerkleRoot(records)` — Merkle root of the (ordered) records.
 - `VerifyRecordsLocally(records, expectedRoot)` — recompute and compare. Returns
   `false` if any record's content no longer hashes to `expectedRoot`.

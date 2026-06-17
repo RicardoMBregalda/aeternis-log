@@ -45,14 +45,17 @@ records = [Record.from_api(r) for r in client.list_records("audit")["records"]]
 assert verify_records_locally(records, expected_root="<root from the blockchain>")
 ```
 
-`Record.compute_hash()` reproduces the server algorithm byte-for-byte:
+`Record.compute_hash()` reproduces the server algorithm byte-for-byte (scheme v2):
 
 ```
-SHA-256(id + timestamp + source + canonical(payload))
+SHA-256(0x00 || lp(id) || lp(timestamp) || lp(source) || lp(canonical(payload)))
 ```
 
-`canonical(payload)` matches Go's `encoding/json` (sorted keys, compact, HTML-escaped),
-so hashes are identical across the Go server, the Go SDK and this SDK.
+where `lp(s)` is an 8-byte big-endian length followed by `s` (so content cannot
+shift across field boundaries) and `0x00` tags a Merkle leaf. `hash_version`
+selects the scheme (absent = legacy v1). `canonical(payload)` matches Go's
+`encoding/json` (sorted keys, compact, HTML-escaped), so hashes are identical
+across the Go server, the Go SDK and this SDK.
 
 > Payload numbers are decoded as 64-bit floats server-side, so integer-valued numbers are
 > canonicalized without a decimal point (`7`, not `7.0`). For guaranteed cross-language

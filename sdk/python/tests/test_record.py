@@ -90,5 +90,26 @@ class TestMerkle(unittest.TestCase):
         self.assertFalse(verify_records_locally(recs, root))
 
 
+class TestConformanceV2(unittest.TestCase):
+    # Golden vector produced by the server's authoritative v2 scheme; the server,
+    # the Go SDK and the Python SDK must all reproduce it byte-for-byte so a
+    # locally recomputed root can be trusted against the on-chain anchor.
+    ROOT = "897b88ee0e8ce4bc54391fd8de95d716c139f0ec972409d7024d64a1835eaf2b"
+    LEAF1 = "d45b3f3276931bfde83931f183e470620d0289f7d6ef3de77b80a8465940c13c"
+
+    def _vector(self):
+        return [
+            Record(id=f"rec-{i}", timestamp="2026-01-01T00:00:00Z", source="conformance",
+                   payload={"k": c}, hash_version=2)
+            for i, c in [(1, "a"), (2, "b"), (3, "c")]
+        ]
+
+    def test_leaf_and_root_match_server(self):
+        recs = self._vector()
+        self.assertEqual(recs[0].compute_hash(), self.LEAF1)
+        self.assertEqual(merkle_root(recs), self.ROOT)
+        self.assertTrue(verify_records_locally(recs, self.ROOT))
+
+
 if __name__ == "__main__":
     unittest.main()
