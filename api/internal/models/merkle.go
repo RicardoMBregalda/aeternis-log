@@ -2,8 +2,10 @@ package models
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"time"
 )
 
@@ -112,6 +114,56 @@ func BuildMerkleTree(hashes []string) string {
 	}
 
 	return currentLevel[0]
+}
+
+// Merkle tree domain separators (v2): leaves and internal nodes are hashed with
+// distinct prefixes so a precomputed internal node can never be passed off as a
+// leaf (and vice versa).
+const (
+	merkleLeafPrefix byte = 0x00
+	merkleNodePrefix byte = 0x01
+)
+
+// writeLenPrefixed writes len(s) as 8 big-endian bytes followed by s, so that
+// concatenated fields have unambiguous boundaries in the hashed pre-image.
+func writeLenPrefixed(h hash.Hash, s string) {
+	var n [8]byte
+	binary.BigEndian.PutUint64(n[:], uint64(len(s)))
+	h.Write(n[:])
+	h.Write([]byte(s))
+}
+
+// CombineHashesV2 combines two child hashes into an internal Merkle node, tagged
+// with the internal-node domain separator so it cannot be confused with a leaf.
+func CombineHashesV2(left, right string) string {
+	h := sha256.New()
+	h.Write([]byte{merkleNodePrefix})
+	h.Write([]byte(left))
+	h.Write([]byte(right))
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// BuildMerkleTreeV2 builds the Merkle root with internal-node domain separation
+// and promotes an odd trailing node up a level instead of duplicating it — the
+// duplicate-last shortcut is the CVE-2012-2459 second-preimage weakness.
+func BuildMerkleTreeV2(hashes []string) string {
+	if len(hashes) == 0 {
+		return ""
+	}
+	level := make([]string, len(hashes))
+	copy(level, hashes)
+	for len(level) > 1 {
+		next := make([]string, 0, (len(level)+1)/2)
+		for i := 0; i < len(level); i += 2 {
+			if i+1 < len(level) {
+				next = append(next, CombineHashesV2(level[i], level[i+1]))
+			} else {
+				next = append(next, level[i]) // promote odd node (no duplication)
+			}
+		}
+		level = next
+	}
+	return level[0]
 }
 
 // Validate validates the MerkleBatch

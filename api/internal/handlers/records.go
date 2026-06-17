@@ -74,14 +74,15 @@ func (h *RecordHandler) CreateRecord(c *gin.Context) {
 	}
 
 	record := &models.Record{
-		Tenant:     tenantFrom(c),
-		Domain:     domain,
-		ID:         req.ID,
-		Timestamp:  req.Timestamp,
-		Source:     req.Source,
-		Payload:    req.Payload,
-		HashFields: req.HashFields,
-		CreatedAt:  models.FlexTime{Time: time.Now().UTC()},
+		Tenant:      tenantFrom(c),
+		Domain:      domain,
+		ID:          req.ID,
+		Timestamp:   req.Timestamp,
+		Source:      req.Source,
+		Payload:     req.Payload,
+		HashFields:  req.HashFields,
+		HashVersion: models.CurrentHashVersion,
+		CreatedAt:   models.FlexTime{Time: time.Now().UTC()},
 	}
 	record.Hash = record.CalculateHash()
 
