@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,6 +18,8 @@ import (
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/merkle"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/metrics"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/middleware"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/wal"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/webhook"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 
@@ -94,6 +97,36 @@ func main() {
 	lg.Info().Str("database", cfg.MongoDB.Database).Msg("MongoDB connected")
 
 	collections := database.NewCollections(mongoClient)
+
+	// Write-Ahead Log (durability for the record-create path) ------------
+	var recordWAL wal.RecordLog = wal.NoopWAL{}
+	if cfg.WAL.Enabled {
+		fw, err := wal.New(cfg.WAL.Directory)
+		if err != nil {
+			lg.Fatal().Err(err).Str("dir", cfg.WAL.Directory).Msg("failed to open WAL")
+		}
+		defer fw.Close()
+		// Recover any record that was appended but not durably inserted before a
+		// crash. Replay is idempotent: an already-present record is a duplicate,
+		// which we treat as success so the log drains.
+		recoverInsert := func(r *models.Record) error {
+			rctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := collections.InsertRecord(rctx, r); err != nil && !errors.Is(err, database.ErrDuplicateRecord) {
+				return err
+			}
+			return nil
+		}
+		if n, err := fw.Recover(context.Background(), recoverInsert); err != nil {
+			lg.Error().Err(err).Msg("WAL recovery failed; entries retained for next start")
+		} else if n > 0 {
+			lg.Info().Int("recovered", n).Msg("WAL recovery: records replayed into MongoDB")
+		}
+		recordWAL = fw
+		lg.Info().Str("dir", cfg.WAL.Directory).Msg("WAL enabled (durable record writes)")
+	} else {
+		lg.Warn().Msg("WAL disabled (record writes are not crash-durable)")
+	}
 
 	// Redis (optional, graceful degradation) -----------------------------
 	redisCache, err := cache.NewRedisClient(&cfg.Redis)
@@ -178,7 +211,7 @@ func main() {
 	}
 
 	healthHandler := handlers.NewHealthHandler(mongoClient, collections, redisCache, fabricClient, batchProcessor, Version, BuildTime)
-	recordHandler := handlers.NewRecordHandler(collections, batchProcessor)
+	recordHandler := handlers.NewRecordHandler(collections, batchProcessor, recordWAL)
 	publicHandler := handlers.NewPublicHandler(fabricClient, cfg.Fabric.Channel)
 	reportHandler := handlers.NewReportHandler(collections)
 

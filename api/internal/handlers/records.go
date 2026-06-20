@@ -12,6 +12,7 @@ import (
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/logger"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/merkle"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/wal"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
@@ -24,11 +25,16 @@ import (
 type RecordHandler struct {
 	collections    *database.Collections
 	batchProcessor *merkle.BatchProcessor
+	wal            wal.RecordLog
 }
 
-// NewRecordHandler creates a new record handler.
-func NewRecordHandler(collections *database.Collections, batchProcessor *merkle.BatchProcessor) *RecordHandler {
-	return &RecordHandler{collections: collections, batchProcessor: batchProcessor}
+// NewRecordHandler creates a new record handler. A nil wal means durability is
+// disabled (a no-op log is used).
+func NewRecordHandler(collections *database.Collections, batchProcessor *merkle.BatchProcessor, w wal.RecordLog) *RecordHandler {
+	if w == nil {
+		w = wal.NoopWAL{}
+	}
+	return &RecordHandler{collections: collections, batchProcessor: batchProcessor, wal: w}
 }
 
 // tenantFrom returns the caller's tenant (set by the auth middleware), falling
@@ -98,7 +104,23 @@ func (h *RecordHandler) CreateRecord(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	if err := h.collections.InsertRecord(ctx, record); err != nil {
+	// Durability: append + fsync to the WAL BEFORE the Mongo insert. If the
+	// process crashes between the two, startup recovery replays the record
+	// (idempotently). Confirm once the insert returns — any outcome closes the
+	// crash window, so the entry is not retained.
+	if err := h.wal.Append(record); err != nil {
+		log.Error().Err(err).Str("domain", domain).Str("record_id", record.ID).Msg("failed to write WAL")
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "wal_error",
+			Message: "Failed to durably record the write",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
+	err := h.collections.InsertRecord(ctx, record)
+	h.wal.Confirm()
+	if err != nil {
 		if errors.Is(err, database.ErrDuplicateRecord) {
 			c.JSON(http.StatusConflict, models.ErrorResponse{
 				Error:   "conflict",
