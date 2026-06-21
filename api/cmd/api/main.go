@@ -189,10 +189,19 @@ func main() {
 		router.Use(metrics.Middleware())
 	}
 	if cfg.RateLimit.Enabled {
-		router.Use(middleware.RateLimiter(cfg.RateLimit.MaxRequests, cfg.RateLimit.Window))
+		var rateStore middleware.RateStore
+		backend := "in-memory (single instance)"
+		if redisCache.Enabled {
+			rateStore = cache.NewRedisRateStore(redisCache.Client)
+			backend = "Redis (shared across instances)"
+		} else {
+			rateStore = middleware.NewMemoryRateStore()
+		}
+		router.Use(middleware.RateLimiter(rateStore, cfg.RateLimit.MaxRequests, cfg.RateLimit.Window))
 		lg.Info().
 			Int("max_requests", cfg.RateLimit.MaxRequests).
 			Dur("window", cfg.RateLimit.Window).
+			Str("backend", backend).
 			Msg("rate limiting enabled")
 	}
 
