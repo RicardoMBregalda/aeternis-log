@@ -1,0 +1,20 @@
+{{- if .Values.persistence.enabled }}
+# Durable storage for the Write-Ahead Log so un-recovered records survive a pod
+# reschedule (an emptyDir would not). ReadWriteOnce: single-node/single-replica.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "aeternislog.fullname" . }}-wal
+  labels:
+    {{- include "aeternislog.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}

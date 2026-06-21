@@ -1,6 +1,20 @@
 # Default values for the aeternislog chart.
 
+# replicaCount > 1 requires a conscious opt-in via allowMultiReplica. The rate
+# limiter is shared (Redis) and batching is race-safe, but the file WAL is
+# per-pod: a ReadWriteOnce PVC cannot be shared across nodes, so multi-node HA
+# needs a StatefulSet (per-pod WAL) or a shared-durability backend (roadmap).
+# Until then the chart renders an error for replicaCount > 1 unless you accept
+# this by setting allowMultiReplica: true.
 replicaCount: 1
+allowMultiReplica: false
+
+# Durable storage for the WAL. With persistence.enabled the WAL lives on a PVC
+# and survives pod reschedules; an emptyDir would lose un-recovered records.
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
 
 image:
   repository: aeternislog-api
@@ -83,8 +97,9 @@ webhook:
   url: ""
   secret: ""
 
-# WAL (write-ahead log) durability. "file" uses a per-pod emptyDir; for multiple
-# replicas with shared recovery use "redis".
+# WAL (write-ahead log) durability. Only the "file" backend is implemented; it
+# is durable on a PVC (see persistence above). A shared/redis WAL for multi-pod
+# recovery is on the roadmap.
 wal:
   backend: file
 
