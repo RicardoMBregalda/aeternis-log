@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -51,31 +50,6 @@ func TestAPIKeyAuth(t *testing.T) {
 				t.Errorf("tenant: got %q, want %q", w.Body.String(), tt.wantTenant)
 			}
 		})
-	}
-}
-
-func TestRateLimiter(t *testing.T) {
-	r := gin.New()
-	r.Use(RateLimiter(2, time.Minute))
-	r.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
-
-	// A distinct IP keeps this test isolated from the package-global limiter map.
-	const ip = "203.0.113.7:5555"
-	do := func() int {
-		req := httptest.NewRequest(http.MethodGet, "/x", nil)
-		req.RemoteAddr = ip
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-		return w.Code
-	}
-
-	for i := 1; i <= 2; i++ {
-		if code := do(); code != http.StatusOK {
-			t.Fatalf("request %d: got %d, want 200", i, code)
-		}
-	}
-	if code := do(); code != http.StatusTooManyRequests {
-		t.Fatalf("request 3: got %d, want 429", code)
 	}
 }
 

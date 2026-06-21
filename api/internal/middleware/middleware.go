@@ -110,51 +110,74 @@ func RequestID() gin.HandlerFunc {
 	}
 }
 
-// Simple in-memory rate limiter
-var (
-	rateLimitMap   = make(map[string][]time.Time)
-	rateLimitMutex sync.RWMutex
-)
+// RateStore is a per-key fixed-window counter used for rate limiting. Incr
+// increments the counter for key within the current window and returns the new
+// count; the key expires after window so idle keys are evicted. A Redis-backed
+// store makes the limit shared across API instances; the in-memory store is the
+// single-instance fallback.
+type RateStore interface {
+	Incr(ctx context.Context, key string, window time.Duration) (int, error)
+}
 
-// RateLimiter middleware for basic rate limiting (simple in-memory version)
-// Limits to maxRequests per window duration per IP
-func RateLimiter(maxRequests int, window time.Duration) gin.HandlerFunc {
-	// This is a simplified version. In production, use a proper rate limiter like
-	// github.com/ulule/limiter with Redis backend
+// RateLimiter limits each client IP to max requests per window using store.
+func RateLimiter(store RateStore, max int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		clientIP := c.ClientIP()
-		now := time.Now()
-
-		rateLimitMutex.Lock()
-		defer rateLimitMutex.Unlock()
-
-		// Clean old entries
-		if timestamps, exists := rateLimitMap[clientIP]; exists {
-			var validTimestamps []time.Time
-			for _, ts := range timestamps {
-				if now.Sub(ts) < window {
-					validTimestamps = append(validTimestamps, ts)
-				}
-			}
-			rateLimitMap[clientIP] = validTimestamps
-		}
-
-		// Check rate limit
-		if len(rateLimitMap[clientIP]) >= maxRequests {
+		n, err := store.Incr(c.Request.Context(), "ratelimit:"+c.ClientIP(), window)
+		if err == nil && n > max {
 			c.JSON(http.StatusTooManyRequests, models.ErrorResponse{
 				Error:   "rate_limit_exceeded",
-				Message: fmt.Sprintf("Rate limit exceeded: %d requests per %s", maxRequests, window),
+				Message: fmt.Sprintf("Rate limit exceeded: %d requests per %s", max, window),
 				Code:    http.StatusTooManyRequests,
 			})
 			c.Abort()
 			return
 		}
-
-		// Add current request
-		rateLimitMap[clientIP] = append(rateLimitMap[clientIP], now)
-
+		// On a store error, fail open (do not block legitimate traffic on an
+		// infrastructure blip); the error is rare and bounded.
 		c.Next()
 	}
+}
+
+// memRateStore is the in-memory fixed-window store. Expired keys are swept on
+// access so memory does not grow unbounded with distinct/spoofed client IPs.
+type memRateStore struct {
+	mu     sync.Mutex
+	counts map[string]*memCounter
+}
+
+type memCounter struct {
+	n       int
+	resetAt time.Time
+}
+
+// NewMemoryRateStore creates an in-memory RateStore.
+func NewMemoryRateStore() *memRateStore {
+	return &memRateStore{counts: make(map[string]*memCounter)}
+}
+
+func (m *memRateStore) Incr(_ context.Context, key string, window time.Duration) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	for k, e := range m.counts {
+		if now.After(e.resetAt) {
+			delete(m.counts, k)
+		}
+	}
+	e := m.counts[key]
+	if e == nil {
+		e = &memCounter{resetAt: now.Add(window)}
+		m.counts[key] = e
+	}
+	e.n++
+	return e.n, nil
+}
+
+func (m *memRateStore) size() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.counts)
 }
 
 // APIKeyAuth authenticates requests against the configured API keys and resolves

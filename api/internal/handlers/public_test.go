@@ -52,14 +52,36 @@ func TestGetAnchorFoundUsesDefaultChannel(t *testing.T) {
 	}
 }
 
-func TestGetAnchorChannelOverrideAndRootMatch(t *testing.T) {
+// F16: a caller-supplied ?channel= must be IGNORED — the channel is resolved
+// server-side, so the endpoint cannot be used to probe arbitrary channels.
+func TestGetAnchorIgnoresChannelOverride(t *testing.T) {
 	q := &fakeQuerier{resp: &fabric.QueryResponse{Data: map[string]interface{}{"merkle_root": "root123"}}}
 	w := do(setupPublic(q), "/public/anchors/b1?channel=acme-channel&root=root123")
-	if q.gotChannel != "acme-channel" {
-		t.Errorf("expected channel override, got %q", q.gotChannel)
+	if q.gotChannel != "logchannel" {
+		t.Errorf("channel must be the server default, got %q", q.gotChannel)
 	}
 	if !strings.Contains(w.Body.String(), `"root_matches":true`) {
 		t.Errorf("expected root_matches true, got %s", w.Body.String())
+	}
+}
+
+// F16: the public endpoint must not enumerate tenant metadata (record id lists,
+// batch sizes) — only the proof (root + timestamp).
+func TestGetAnchorDoesNotLeakMetadata(t *testing.T) {
+	q := &fakeQuerier{resp: &fabric.QueryResponse{Data: map[string]interface{}{
+		"merkle_root": "root123",
+		"log_ids":     []interface{}{"rec-1", "rec-2"},
+		"num_logs":    2,
+	}}}
+	body := do(setupPublic(q), "/public/anchors/b1").Body.String()
+	if strings.Contains(body, "log_ids") || strings.Contains(body, "rec-1") {
+		t.Errorf("response leaked log_ids: %s", body)
+	}
+	if strings.Contains(body, "num_logs") {
+		t.Errorf("response leaked num_logs: %s", body)
+	}
+	if !strings.Contains(body, "root123") {
+		t.Errorf("response should still include the merkle_root proof: %s", body)
 	}
 }
 

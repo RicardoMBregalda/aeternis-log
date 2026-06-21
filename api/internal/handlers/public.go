@@ -32,12 +32,12 @@ func NewPublicHandler(f batchQuerier, defaultChannel string) *PublicHandler {
 
 // GetAnchor handles GET /public/anchors/:batchId
 // @Summary Public anchor lookup
-// @Description Return the on-chain Merkle batch for a batch id (no authentication).
-//             Pass ?root= to also check whether a given Merkle root matches the anchored one.
+// @Description Prove that a batch id is anchored on-chain (no authentication). Returns
+//             only the anchored Merkle root and timestamp — never tenant metadata. Pass
+//             ?root= to check whether a given Merkle root matches the anchored one.
 // @Tags Public
 // @Produce json
 // @Param batchId path string true "Batch ID"
-// @Param channel query string false "Fabric channel (defaults to the server's default channel)"
 // @Param root query string false "Merkle root to compare against the anchored one"
 // @Success 200 {object} map[string]interface{}
 // @Failure 404 {object} models.ErrorResponse
@@ -45,7 +45,10 @@ func NewPublicHandler(f batchQuerier, defaultChannel string) *PublicHandler {
 // @Router /public/anchors/{batchId} [get]
 func (h *PublicHandler) GetAnchor(c *gin.Context) {
 	batchID := c.Param("batchId")
-	channel := c.DefaultQuery("channel", h.defaultChannel)
+	// F16: the channel is resolved SERVER-SIDE, never from a caller-supplied
+	// parameter, so this unauthenticated endpoint cannot be used to probe
+	// arbitrary channels.
+	channel := h.defaultChannel
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
@@ -69,15 +72,21 @@ func (h *PublicHandler) GetAnchor(c *gin.Context) {
 		return
 	}
 
+	// F16: return ONLY the proof of anchoring — the Merkle root and timestamp.
+	// Never echo tenant metadata such as the record id list (log_ids) or batch
+	// size (num_logs), which would let an unauthenticated caller enumerate it.
+	merkleRoot, _ := resp.Data["merkle_root"].(string)
 	out := gin.H{
-		"anchored": true,
-		"channel":  channel,
-		"batch":    resp.Data,
+		"anchored":    true,
+		"batch_id":    batchID,
+		"merkle_root": merkleRoot,
+	}
+	if ts, ok := resp.Data["timestamp"]; ok {
+		out["anchored_at"] = ts
 	}
 	// Optional trustless check: does the caller's root match the anchored one?
 	if root := c.Query("root"); root != "" {
-		anchored, _ := resp.Data["merkle_root"].(string)
-		out["root_matches"] = anchored == root
+		out["root_matches"] = merkleRoot == root
 	}
 	c.JSON(http.StatusOK, out)
 }
