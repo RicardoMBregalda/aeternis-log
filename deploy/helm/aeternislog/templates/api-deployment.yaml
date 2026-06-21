@@ -1,3 +1,6 @@
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.allowMultiReplica) }}
+{{- fail "replicaCount > 1 is not supported out of the box: the file WAL is per-pod and a ReadWriteOnce PVC cannot be shared across nodes, so a record durably written by one pod is not recoverable by another. Rate limiting (Redis) and batching are already multi-instance safe. Run a single replica, or set allowMultiReplica=true once you have arranged per-pod persistent WAL (e.g. a StatefulSet)." }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -91,4 +94,9 @@ spec:
               - key: sign-key.pem
                 path: keystore/key.pem
         - name: wal
+        {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "aeternislog.fullname" . }}-wal
+        {{- else }}
           emptyDir: {}
+        {{- end }}
