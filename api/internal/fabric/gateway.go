@@ -17,13 +17,9 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// gatewayBackend talks to the peer through the Fabric Gateway gRPC API. It owns
-// a persistent gRPC connection and resolves the chaincode contract per channel
-// (one connection serves every channel the peer has joined), removing the need
-// for the Docker socket and the peer CLI. Contracts are cached per channel so
-// per-tenant channels reuse the same gateway.
-type gatewayBackend struct {
-	conn      *grpc.ClientConn
+// gatewayConn is one signing identity's view of the peer: its own gateway
+// session plus a per-channel contract cache.
+type gatewayConn struct {
 	gateway   *client.Gateway
 	chaincode string
 
@@ -32,37 +28,89 @@ type gatewayBackend struct {
 }
 
 // contractFor returns the chaincode contract on the given channel, caching it.
-func (b *gatewayBackend) contractFor(channel string) *client.Contract {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if c, ok := b.contracts[channel]; ok {
+func (g *gatewayConn) contractFor(channel string) *client.Contract {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if c, ok := g.contracts[channel]; ok {
 		return c
 	}
-	c := b.gateway.GetNetwork(channel).GetContract(b.chaincode)
-	b.contracts[channel] = c
+	c := g.gateway.GetNetwork(channel).GetContract(g.chaincode)
+	g.contracts[channel] = c
 	return c
 }
 
-// newGatewayBackend builds a gateway-backed Fabric transport: it loads the
-// signing identity and peer TLS root from disk and opens the gRPC connection.
+func (g *gatewayConn) close() {
+	if g != nil && g.gateway != nil {
+		g.gateway.Close()
+	}
+}
+
+// gatewayBackend talks to the peer through the Fabric Gateway gRPC API. It owns
+// a single persistent gRPC connection (one connection serves every channel the
+// peer has joined) shared by one gateway session per signing identity: a default
+// identity plus an optional per-tenant identity (F14). Selecting the identity by
+// tenant is how a tenant anchors under a certificate carrying its own `tenant`
+// attribute; an unmapped tenant uses the default identity, so the change is
+// backward-compatible when no per-tenant identities are configured.
+type gatewayBackend struct {
+	conn      *grpc.ClientConn
+	defaultGw *gatewayConn
+	tenantGws map[string]*gatewayConn
+}
+
+// gatewayFor returns the gateway session for a tenant: its own when configured,
+// otherwise the default identity.
+func (b *gatewayBackend) gatewayFor(tenant string) *gatewayConn {
+	if g, ok := b.tenantGws[tenant]; ok {
+		return g
+	}
+	return b.defaultGw
+}
+
+// newGatewayBackend builds a gateway-backed Fabric transport: a single gRPC
+// connection shared by the default signing identity and any per-tenant
+// identities configured under fabric.tenant_identities.
 func newGatewayBackend(cfg *config.FabricConfig) (*gatewayBackend, error) {
 	conn, err := newGRPCConnection(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	id, err := newIdentity(cfg.IdentityCertFile, cfg.MSPID)
+	b := &gatewayBackend{conn: conn, tenantGws: make(map[string]*gatewayConn)}
+
+	b.defaultGw, err = connectGateway(conn, cfg, cfg.MSPID, cfg.IdentityCertFile, cfg.IdentityKeyDir)
 	if err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
 
-	sign, err := newSign(cfg.IdentityKeyDir)
-	if err != nil {
-		_ = conn.Close()
-		return nil, err
+	for tenant, ti := range cfg.TenantIdentities {
+		mspID := ti.MSPID
+		if mspID == "" {
+			mspID = cfg.MSPID
+		}
+		gw, err := connectGateway(conn, cfg, mspID, ti.IdentityCertFile, ti.IdentityKeyDir)
+		if err != nil {
+			b.Close()
+			return nil, fmt.Errorf("tenant %q identity: %w", tenant, err)
+		}
+		b.tenantGws[tenant] = gw
 	}
 
+	return b, nil
+}
+
+// connectGateway opens a gateway session for one signing identity over the given
+// shared gRPC connection.
+func connectGateway(conn *grpc.ClientConn, cfg *config.FabricConfig, mspID, certFile, keyDir string) (*gatewayConn, error) {
+	id, err := newIdentity(certFile, mspID)
+	if err != nil {
+		return nil, err
+	}
+	sign, err := newSign(keyDir)
+	if err != nil {
+		return nil, err
+	}
 	gw, err := client.Connect(
 		id,
 		client.WithSign(sign),
@@ -73,16 +121,9 @@ func newGatewayBackend(cfg *config.FabricConfig) (*gatewayBackend, error) {
 		client.WithCommitStatusTimeout(cfg.InvokeTimeout),
 	)
 	if err != nil {
-		_ = conn.Close()
 		return nil, fmt.Errorf("failed to connect Fabric gateway: %w", err)
 	}
-
-	return &gatewayBackend{
-		conn:      conn,
-		gateway:   gw,
-		chaincode: cfg.Chaincode,
-		contracts: make(map[string]*client.Contract),
-	}, nil
+	return &gatewayConn{gateway: gw, chaincode: cfg.Chaincode, contracts: make(map[string]*client.Contract)}, nil
 }
 
 // newGRPCConnection dials the peer gateway endpoint using its TLS root cert.
@@ -147,10 +188,11 @@ func newSign(keyDir string) (identity.Sign, error) {
 	return sign, nil
 }
 
-// Invoke submits a transaction (endorse + submit) on the given channel and
-// returns its transaction ID.
-func (b *gatewayBackend) Invoke(ctx context.Context, channel, function string, args []string) (*InvokeResponse, error) {
-	proposal, err := b.contractFor(channel).NewProposal(function, client.WithArguments(args...))
+// Invoke submits a transaction (endorse + submit) on the given channel using the
+// tenant's signing identity (or the default identity when unmapped) and returns
+// its transaction ID.
+func (b *gatewayBackend) Invoke(ctx context.Context, tenant, channel, function string, args []string) (*InvokeResponse, error) {
+	proposal, err := b.gatewayFor(tenant).contractFor(channel).NewProposal(function, client.WithArguments(args...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create proposal: %w", err)
 	}
@@ -183,10 +225,10 @@ func (b *gatewayBackend) Invoke(ctx context.Context, channel, function string, a
 	}, nil
 }
 
-// Query evaluates a transaction (no ledger update) on the given channel and
-// returns the result.
-func (b *gatewayBackend) Query(ctx context.Context, channel, function string, args []string) (*QueryResponse, error) {
-	result, err := b.contractFor(channel).EvaluateWithContext(ctx, function, client.WithArguments(args...))
+// Query evaluates a transaction (no ledger update) on the given channel using
+// the tenant's signing identity (or the default when unmapped).
+func (b *gatewayBackend) Query(ctx context.Context, tenant, channel, function string, args []string) (*QueryResponse, error) {
+	result, err := b.gatewayFor(tenant).contractFor(channel).EvaluateWithContext(ctx, function, client.WithArguments(args...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate transaction: %w", err)
 	}
@@ -201,10 +243,11 @@ func (b *gatewayBackend) HealthCheck(_ context.Context) error {
 	return nil
 }
 
-// Close releases the gateway and the underlying gRPC connection.
+// Close releases every gateway session and the underlying gRPC connection.
 func (b *gatewayBackend) Close() error {
-	if b.gateway != nil {
-		b.gateway.Close()
+	b.defaultGw.close()
+	for _, g := range b.tenantGws {
+		g.close()
 	}
 	if b.conn != nil {
 		return b.conn.Close()

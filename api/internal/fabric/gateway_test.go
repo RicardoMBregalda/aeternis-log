@@ -40,11 +40,11 @@ func TestGatewayBackendConstruct(t *testing.T) {
 	}
 	defer b.Close()
 
-	if b.contractFor(cfg.Channel) == nil {
+	if b.gatewayFor("").contractFor(cfg.Channel) == nil {
 		t.Error("expected a non-nil contract handle for the default channel")
 	}
 	// A second channel resolves a distinct, cached contract from the same gateway.
-	if c2 := b.contractFor("acme-channel"); c2 == nil {
+	if c2 := b.gatewayFor("").contractFor("acme-channel"); c2 == nil {
 		t.Error("expected a non-nil contract handle for a tenant channel")
 	}
 	if err := b.HealthCheck(nil); err != nil {

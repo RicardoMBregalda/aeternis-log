@@ -47,16 +47,19 @@ chaincode against a fake stub + client identity and asserts the guarantee:
 
 The enforcement above is unconditional, but for it to isolate *real* tenants in
 production each tenant must transact with **its own identity** carrying its
-`tenant` attribute. That is a credential-provisioning step, not a code path:
+`tenant` attribute. The API supports this directly — it keeps one gateway
+session per configured identity and selects by tenant — so the remaining work is
+credential provisioning + configuration:
 
 1. Provision a per-tenant identity:
    `prod/scripts/register-tenant-identity.sh <tenant>` registers and enrolls an
    identity whose ecert carries `tenant=<tenant>`.
-2. Deploy the tenant-scoped chaincode:
+2. Configure it under `fabric.tenant_identities.<tenant>` (cert + key dir) and
+   mount the bundle; the API then anchors that tenant's batches with it (combine
+   with the per-tenant channels from F-H where used).
+3. Deploy the tenant-scoped chaincode:
    `prod/scripts/upgrade-chaincode.sh <new-version>`.
-3. The API anchors each tenant's batches with that tenant's identity (mount the
-   bundle per tenant; combine with the per-tenant channels from F-H where used).
 
-Until a tenant is provisioned with its own identity, its anchors fall back to
-the MSP-ID partition (org-level isolation), which is still enforced — never the
-old shared, unscoped keyspace.
+Until a tenant is configured with its own identity, its anchors use the default
+identity and fall back to the MSP-ID partition (org-level isolation), which is
+still enforced — never the old shared, unscoped keyspace.
