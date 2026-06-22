@@ -61,6 +61,15 @@ fabric:
   # Env override: FABRIC_TENANT_CHANNELS="acme:acme-channel,globex:globex-channel".
   # tenant_channels:
   #   acme: "acme-channel"
+  # Per-tenant signing identities (ledger-level isolation by identity): each
+  # tenant anchors with a cert carrying its `tenant` attribute, which the
+  # chaincode uses to partition batch state (F14). Unmapped tenants use the
+  # default identity above. Provision with prod/scripts/register-tenant-identity.sh.
+  # tenant_identities:
+  #   acme:
+  #     msp_id: "Org1MSP"            # optional; defaults to msp_id above
+  #     identity_cert_file: "/fabric-identity/tenants/acme/signcerts/cert.pem"
+  #     identity_key_dir: "/fabric-identity/tenants/acme/keystore"
 
 # Durable, append-only file WAL fronting the record-create path.
 wal:

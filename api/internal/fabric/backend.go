@@ -11,8 +11,8 @@ import (
 // gRPC SDK. Selecting the backend is a configuration concern, so the rest of the
 // API depends only on this interface.
 type Backend interface {
-	Invoke(ctx context.Context, channel, function string, args []string) (*InvokeResponse, error)
-	Query(ctx context.Context, channel, function string, args []string) (*QueryResponse, error)
+	Invoke(ctx context.Context, tenant, channel, function string, args []string) (*InvokeResponse, error)
+	Query(ctx context.Context, tenant, channel, function string, args []string) (*QueryResponse, error)
 	HealthCheck(ctx context.Context) error
 	Close() error
 }
@@ -42,11 +42,11 @@ func newBackend(cfg *config.FabricConfig) (Backend, error) {
 // disabledBackend is used when Fabric sync is disabled.
 type disabledBackend struct{}
 
-func (disabledBackend) Invoke(context.Context, string, string, []string) (*InvokeResponse, error) {
+func (disabledBackend) Invoke(context.Context, string, string, string, []string) (*InvokeResponse, error) {
 	return nil, fmt.Errorf("fabric sync is disabled")
 }
 
-func (disabledBackend) Query(context.Context, string, string, []string) (*QueryResponse, error) {
+func (disabledBackend) Query(context.Context, string, string, string, []string) (*QueryResponse, error) {
 	return nil, fmt.Errorf("fabric sync is disabled")
 }
 

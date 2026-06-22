@@ -149,6 +149,21 @@ type FabricConfig struct {
 	// (the default). Requires the channel to already exist with the chaincode
 	// committed (see prod/scripts/create-tenant-channel.sh).
 	TenantChannels map[string]string `yaml:"tenant_channels"`
+
+	// TenantIdentities maps a tenant id to its own gateway signing identity, so
+	// each tenant anchors with a certificate carrying its `tenant` attribute —
+	// the credential the chaincode uses to partition batch state (F14). A tenant
+	// without a mapping uses the default identity above. Provision per-tenant
+	// identities with prod/scripts/register-tenant-identity.sh.
+	TenantIdentities map[string]TenantIdentity `yaml:"tenant_identities"`
+}
+
+// TenantIdentity is a per-tenant gateway signing identity bundle. MSPID defaults
+// to the Fabric MSPID when empty.
+type TenantIdentity struct {
+	MSPID            string `yaml:"msp_id"`
+	IdentityCertFile string `yaml:"identity_cert_file"`
+	IdentityKeyDir   string `yaml:"identity_key_dir"`
 }
 
 // ChannelForTenant returns the Fabric channel a tenant anchors to: its dedicated
