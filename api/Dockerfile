@@ -16,8 +16,18 @@ COPY go.mod go.sum ./
 # Download dependencies
 RUN go mod download
 
+# Install the Swagger generator (pinned; cached independently of the source)
+RUN go install github.com/swaggo/swag/cmd/swag@v1.16.4
+
 # Copy source code
 COPY . .
+
+# Regenerate the Swagger docs so the image always serves the current API surface.
+# docs/ is a gitignored build artifact, so generating it here also lets a clean
+# checkout build. --parseDependency is omitted on purpose: it makes swag parse
+# external modules (e.g. mongo-driver, whose untyped const overflows uint64) and
+# aborts generation. Every annotated response type is internal.
+RUN swag init -g cmd/api/main.go -o ./docs --parseInternal
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
