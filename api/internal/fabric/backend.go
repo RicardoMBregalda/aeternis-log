@@ -7,10 +7,9 @@ import (
 	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 )
 
-// Backend is the transport used to talk to the Fabric peer. The docker-exec
-// backend shells out to the peer CLI; the gateway backend uses the Fabric
-// Gateway gRPC SDK. Selecting the backend is a configuration concern, so the
-// rest of the API depends only on this interface.
+// Backend is the transport used to talk to the Fabric peer — the Fabric Gateway
+// gRPC SDK. Selecting the backend is a configuration concern, so the rest of the
+// API depends only on this interface.
 type Backend interface {
 	Invoke(ctx context.Context, channel, function string, args []string) (*InvokeResponse, error)
 	Query(ctx context.Context, channel, function string, args []string) (*QueryResponse, error)
@@ -19,26 +18,24 @@ type Backend interface {
 }
 
 var (
-	_ Backend = (*dockerExecBackend)(nil)
 	_ Backend = (*gatewayBackend)(nil)
 	_ Backend = disabledBackend{}
 )
 
-// newBackend selects the Fabric transport backend from configuration. When sync
-// is disabled it returns a no-op backend so the client constructs cleanly
-// without requiring connectivity or credentials.
+// newBackend constructs the Fabric transport. Only the gateway transport is
+// supported (the legacy docker-exec transport, which required mounting the
+// Docker socket, was removed). When sync is disabled a no-op backend is returned
+// so the client constructs cleanly without connectivity or credentials.
 func newBackend(cfg *config.FabricConfig) (Backend, error) {
 	if !cfg.SyncEnabled {
 		return disabledBackend{}, nil
 	}
 
 	switch cfg.Transport {
-	case "", "docker-exec":
-		return newDockerExecBackend(cfg), nil
-	case "gateway":
+	case "", "gateway":
 		return newGatewayBackend(cfg)
 	default:
-		return nil, fmt.Errorf("unknown fabric transport %q", cfg.Transport)
+		return nil, fmt.Errorf("unsupported fabric transport %q (only \"gateway\" is supported)", cfg.Transport)
 	}
 }
 

@@ -11,10 +11,8 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - wal-data:/var/log/aeternislog-wal
-      # crypto material for the "gateway" (gRPC) transport (default), mounted read-only.
+      # crypto material for the gateway (gRPC) transport, mounted read-only.
       - ../hybrid-architecture/fabric-network/crypto-config:/fabric-crypto:ro
-      # docker.sock is only needed for the legacy "docker-exec" transport; uncomment to use it:
-      # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=5001
@@ -24,9 +22,8 @@ services:
       - FABRIC_API_URL=http://fabric-api:4000
       - WAL_DIRECTORY=/var/log/aeternislog-wal
       - LOG_LEVEL=info
-      # Fabric transport defaults to "gateway" (gRPC), using the crypto mounted
-      # at /fabric-crypto and the config.yaml paths. To fall back to the legacy
-      # transport, set FABRIC_TRANSPORT=docker-exec and uncomment the docker.sock mount.
+      # Fabric uses the gateway (gRPC) transport with the crypto mounted at
+      # /fabric-crypto and the paths in config.yaml.
     depends_on:
       - mongodb
       - redis
