@@ -15,11 +15,13 @@ import (
 type fakeQuerier struct {
 	resp       *fabric.QueryResponse
 	err        error
+	gotTenant  string
 	gotChannel string
 	gotBatch   string
 }
 
-func (f *fakeQuerier) VerifyMerkleBatch(_ context.Context, channel, batchID string) (*fabric.QueryResponse, error) {
+func (f *fakeQuerier) VerifyMerkleBatch(_ context.Context, tenant, channel, batchID string) (*fabric.QueryResponse, error) {
+	f.gotTenant = tenant
 	f.gotChannel = channel
 	f.gotBatch = batchID
 	return f.resp, f.err

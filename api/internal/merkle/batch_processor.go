@@ -23,8 +23,8 @@ import (
 type Anchorer interface {
 	Enabled() bool
 	ChannelForTenant(tenant string) string
-	StoreMerkleBatch(ctx context.Context, channel, batchID, merkleRoot string, numRecords int, recordIDs []string) (*fabric.InvokeResponse, error)
-	VerifyMerkleBatch(ctx context.Context, channel, batchID string) (*fabric.QueryResponse, error)
+	StoreMerkleBatch(ctx context.Context, tenant, channel, batchID, merkleRoot string, numRecords int, recordIDs []string) (*fabric.InvokeResponse, error)
+	VerifyMerkleBatch(ctx context.Context, tenant, channel, batchID string) (*fabric.QueryResponse, error)
 }
 
 // BatchProcessor batches pending records, builds their Merkle tree and anchors
@@ -170,11 +170,11 @@ func (bp *BatchProcessor) autoBatchTicker(ctx context.Context) {
 // batch, ("", AnchorUnanchored) when the ledger has no such batch, and
 // ("", AnchorUnknown) when Fabric is disabled or unreachable (so the caller can
 // fall back to a local check and disclose that the anchor was not consulted).
-func (bp *BatchProcessor) anchoredRoot(ctx context.Context, channel, batchID string) (string, string) {
+func (bp *BatchProcessor) anchoredRoot(ctx context.Context, tenant, channel, batchID string) (string, string) {
 	if bp.anchorer == nil || !bp.anchorer.Enabled() {
 		return "", models.AnchorUnknown
 	}
-	resp, err := bp.anchorer.VerifyMerkleBatch(ctx, channel, batchID)
+	resp, err := bp.anchorer.VerifyMerkleBatch(ctx, tenant, channel, batchID)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "does not exist") {
 			return "", models.AnchorUnanchored
@@ -282,7 +282,7 @@ func (bp *BatchProcessor) ProcessRecordBatch(ctx context.Context, tenant, domain
 	channel := bp.anchorer.ChannelForTenant(tenant)
 	result.Channel = channel
 
-	inv, err := bp.anchorer.StoreMerkleBatch(fabricCtx, channel, batchID, merkleRoot, len(records), recordIDs)
+	inv, err := bp.anchorer.StoreMerkleBatch(fabricCtx, tenant, channel, batchID, merkleRoot, len(records), recordIDs)
 	if err != nil {
 		bp.incrementFailedBatch()
 		if mErr := bp.collections.MarkRecordBatchFailed(ctx, tenant, domain, batchID, merkleRoot); mErr != nil {
@@ -331,7 +331,7 @@ func (bp *BatchProcessor) VerifyRecordBatch(ctx context.Context, tenant, domain,
 	if bp.anchorer != nil {
 		channel = bp.anchorer.ChannelForTenant(tenant)
 	}
-	onChainRoot, anchorStatus := bp.anchoredRoot(ctx, channel, batchID)
+	onChainRoot, anchorStatus := bp.anchoredRoot(ctx, tenant, channel, batchID)
 
 	resp := buildVerifyResponse(batchID, len(records), storedRoot, recalculated, onChainRoot, anchorStatus)
 	metrics.RecordVerification(domain, resp.IsValid)
@@ -365,7 +365,7 @@ func (bp *BatchProcessor) ReconcileBatches(ctx context.Context) error {
 		}
 		channel := bp.anchorer.ChannelForTenant(s.Tenant)
 
-		inv, err := bp.anchorer.StoreMerkleBatch(ctx, channel, s.BatchID, root, len(records), ids)
+		inv, err := bp.anchorer.StoreMerkleBatch(ctx, s.Tenant, channel, s.BatchID, root, len(records), ids)
 		if err != nil {
 			if isAlreadyAnchored(err) {
 				if sErr := bp.collections.SetRecordBatchAnchored(ctx, s.Tenant, s.Domain, s.BatchID, root, records[0].TxID); sErr != nil {
