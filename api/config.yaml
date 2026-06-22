@@ -42,7 +42,6 @@ fabric:
   channel: "logchannel"
   chaincode: "logchaincode"
   sync_enabled: true
-  sync_max_workers: 10
   invoke_timeout: 30s
   query_timeout: 10s
   # Only the "gateway" (Fabric Gateway gRPC SDK) transport is supported.
@@ -63,24 +62,10 @@ fabric:
   # tenant_channels:
   #   acme: "acme-channel"
 
+# Durable, append-only file WAL fronting the record-create path.
 wal:
   enabled: true
-  # backend: "file" (local, single instance) or "redis" (Redis Streams,
-  # supports running multiple API instances). In "redis" mode durability
-  # depends on Redis persistence: run Redis with AOF enabled
-  # (appendonly yes; appendfsync always for parity with the file fsync).
-  backend: "file"
   directory: "/var/log/aeternislog-wal"
-  check_interval: 5s
-  max_file_size_mb: 100
-  rotation_enabled: true
-  retention_days: 7
-  # Redis Streams backend settings (used when backend == "redis")
-  stream_key: "wal:pending:logs"
-  consumer_group: "wal-processors"
-  read_count: 128
-  block_timeout: 2s
-  claim_min_idle: 30s
 
 batching:
   enabled: true
@@ -94,7 +79,6 @@ logging:
   format: "json"  # json or console
   output: "stdout"  # stdout or file path
   enable_caller: true
-  enable_stacktrace: false
 
 metrics:
   enabled: true

@@ -12,12 +12,12 @@ import (
 
 // Config holds all application configuration
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	MongoDB  MongoDBConfig  `yaml:"mongodb"`
-	Redis    RedisConfig    `yaml:"redis"`
-	Fabric   FabricConfig   `yaml:"fabric"`
-	WAL      WALConfig      `yaml:"wal"`
-	Batching BatchingConfig `yaml:"batching"`
+	Server    ServerConfig    `yaml:"server"`
+	MongoDB   MongoDBConfig   `yaml:"mongodb"`
+	Redis     RedisConfig     `yaml:"redis"`
+	Fabric    FabricConfig    `yaml:"fabric"`
+	WAL       WALConfig       `yaml:"wal"`
+	Batching  BatchingConfig  `yaml:"batching"`
 	Logging   LoggingConfig   `yaml:"logging"`
 	Metrics   MetricsConfig   `yaml:"metrics"`
 	Auth      AuthConfig      `yaml:"auth"`
@@ -92,17 +92,17 @@ type ServerConfig struct {
 
 // MongoDBConfig holds MongoDB connection configuration
 type MongoDBConfig struct {
-	URL                        string        `yaml:"url"`
-	Database                   string        `yaml:"database"`
-	Collection                 string        `yaml:"collection"`
-	RecordsCollection          string        `yaml:"records_collection"`
-	SyncControlCollection      string        `yaml:"sync_control_collection"`
-	MinPoolSize                int           `yaml:"min_pool_size"`
-	MaxPoolSize                int           `yaml:"max_pool_size"`
-	MaxIdleTimeMS              int           `yaml:"max_idle_time_ms"`
-	ServerSelectionTimeoutMS   int           `yaml:"server_selection_timeout_ms"`
-	ConnectTimeout             time.Duration `yaml:"connect_timeout"`
-	SocketTimeout              time.Duration `yaml:"socket_timeout"`
+	URL                      string        `yaml:"url"`
+	Database                 string        `yaml:"database"`
+	Collection               string        `yaml:"collection"`
+	RecordsCollection        string        `yaml:"records_collection"`
+	SyncControlCollection    string        `yaml:"sync_control_collection"`
+	MinPoolSize              int           `yaml:"min_pool_size"`
+	MaxPoolSize              int           `yaml:"max_pool_size"`
+	MaxIdleTimeMS            int           `yaml:"max_idle_time_ms"`
+	ServerSelectionTimeoutMS int           `yaml:"server_selection_timeout_ms"`
+	ConnectTimeout           time.Duration `yaml:"connect_timeout"`
+	SocketTimeout            time.Duration `yaml:"socket_timeout"`
 }
 
 // RedisConfig holds Redis configuration
@@ -123,13 +123,12 @@ type RedisConfig struct {
 
 // FabricConfig holds Hyperledger Fabric configuration
 type FabricConfig struct {
-	APIURL         string        `yaml:"api_url"`
-	Channel        string        `yaml:"channel"`
-	Chaincode      string        `yaml:"chaincode"`
-	SyncEnabled    bool          `yaml:"sync_enabled"`
-	SyncMaxWorkers int           `yaml:"sync_max_workers"`
-	InvokeTimeout  time.Duration `yaml:"invoke_timeout"`
-	QueryTimeout   time.Duration `yaml:"query_timeout"`
+	APIURL        string        `yaml:"api_url"`
+	Channel       string        `yaml:"channel"`
+	Chaincode     string        `yaml:"chaincode"`
+	SyncEnabled   bool          `yaml:"sync_enabled"`
+	InvokeTimeout time.Duration `yaml:"invoke_timeout"`
+	QueryTimeout  time.Duration `yaml:"query_timeout"`
 
 	// Transport selects how the API talks to the peer. Only "gateway" (the Fabric
 	// Gateway gRPC SDK) is supported; an empty value defaults to gateway.
@@ -163,26 +162,8 @@ func (fc *FabricConfig) ChannelForTenant(tenant string) string {
 
 // WALConfig holds Write-Ahead Log configuration
 type WALConfig struct {
-	Enabled         bool          `yaml:"enabled"`
-	Directory       string        `yaml:"directory"`
-	CheckInterval   time.Duration `yaml:"check_interval"`
-	MaxFileSizeMB   int           `yaml:"max_file_size_mb"`
-	RotationEnabled bool          `yaml:"rotation_enabled"`
-	RetentionDays   int           `yaml:"retention_days"`
-
-	// Backend selects the WAL implementation:
-	//   "file"  - local append-only file with fsync (single instance)
-	//   "redis" - Redis Streams + consumer group (supports multiple API instances)
-	// Durability in "redis" mode depends on Redis persistence: run Redis with
-	// AOF enabled (appendfsync always for parity with the file fsync).
-	Backend string `yaml:"backend"`
-
-	// Redis Streams backend settings (used when Backend == "redis").
-	StreamKey     string        `yaml:"stream_key"`     // stream that holds pending entries
-	ConsumerGroup string        `yaml:"consumer_group"` // shared group across API instances
-	ReadCount     int64         `yaml:"read_count"`     // max entries fetched per read
-	BlockTimeout  time.Duration `yaml:"block_timeout"`  // XREADGROUP block duration
-	ClaimMinIdle  time.Duration `yaml:"claim_min_idle"` // reclaim entries idle longer than this
+	Enabled   bool   `yaml:"enabled"`
+	Directory string `yaml:"directory"`
 }
 
 // BatchingConfig holds Merkle Tree batching configuration
@@ -196,11 +177,10 @@ type BatchingConfig struct {
 
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
-	Level            string `yaml:"level"`
-	Format           string `yaml:"format"` // json or console
-	Output           string `yaml:"output"` // stdout or file path
-	EnableCaller     bool   `yaml:"enable_caller"`
-	EnableStacktrace bool   `yaml:"enable_stacktrace"`
+	Level        string `yaml:"level"`
+	Format       string `yaml:"format"` // json or console
+	Output       string `yaml:"output"` // stdout or file path
+	EnableCaller bool   `yaml:"enable_caller"`
 }
 
 // MetricsConfig holds Prometheus metrics configuration
@@ -225,17 +205,17 @@ func LoadConfig(configPath string) (*Config, error) {
 			CORSAllowedOrigins: []string{"*"},
 		},
 		MongoDB: MongoDBConfig{
-			URL:                       "mongodb://localhost:27017",
-			Database:                  "logdb",
-			Collection:                "logs",
-			RecordsCollection:         "records",
-			SyncControlCollection:     "sync_control",
-			MinPoolSize:               10,
-			MaxPoolSize:               100,
-			MaxIdleTimeMS:             300000,
-			ServerSelectionTimeoutMS:  5000,
-			ConnectTimeout:            10 * time.Second,
-			SocketTimeout:             30 * time.Second,
+			URL:                      "mongodb://localhost:27017",
+			Database:                 "logdb",
+			Collection:               "logs",
+			RecordsCollection:        "records",
+			SyncControlCollection:    "sync_control",
+			MinPoolSize:              10,
+			MaxPoolSize:              100,
+			MaxIdleTimeMS:            300000,
+			ServerSelectionTimeoutMS: 5000,
+			ConnectTimeout:           10 * time.Second,
+			SocketTimeout:            30 * time.Second,
 		},
 		Redis: RedisConfig{
 			Host:         "localhost",
@@ -251,13 +231,12 @@ func LoadConfig(configPath string) (*Config, error) {
 			CacheEnabled: true,
 		},
 		Fabric: FabricConfig{
-			APIURL:           "http://localhost:4000",
-			Channel:          "logchannel",
-			Chaincode:        "logchaincode",
-			SyncEnabled:      true,
-			SyncMaxWorkers:   10,
-			InvokeTimeout:    30 * time.Second,
-			QueryTimeout:     10 * time.Second,
+			APIURL:                    "http://localhost:4000",
+			Channel:                   "logchannel",
+			Chaincode:                 "logchaincode",
+			SyncEnabled:               true,
+			InvokeTimeout:             30 * time.Second,
+			QueryTimeout:              10 * time.Second,
 			Transport:                 "gateway",
 			MSPID:                     "Org1MSP",
 			GatewayPeerEndpoint:       "peer0.org1.example.com:7051",
@@ -267,18 +246,8 @@ func LoadConfig(configPath string) (*Config, error) {
 			IdentityKeyDir:            "/fabric-crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore",
 		},
 		WAL: WALConfig{
-			Enabled:         true,
-			Directory:       "/var/log/aeternislog-wal",
-			CheckInterval:   5 * time.Second,
-			MaxFileSizeMB:   100,
-			RotationEnabled: true,
-			RetentionDays:   7,
-			Backend:         "file",
-			StreamKey:       "wal:pending:logs",
-			ConsumerGroup:   "wal-processors",
-			ReadCount:       128,
-			BlockTimeout:    2 * time.Second,
-			ClaimMinIdle:    30 * time.Second,
+			Enabled:   true,
+			Directory: "/var/log/aeternislog-wal",
 		},
 		Batching: BatchingConfig{
 			Enabled:              true,
@@ -288,11 +257,10 @@ func LoadConfig(configPath string) (*Config, error) {
 			VerificationEnabled:  true,
 		},
 		Logging: LoggingConfig{
-			Level:            "info",
-			Format:           "json",
-			Output:           "stdout",
-			EnableCaller:     true,
-			EnableStacktrace: false,
+			Level:        "info",
+			Format:       "json",
+			Output:       "stdout",
+			EnableCaller: true,
 		},
 		Metrics: MetricsConfig{
 			Enabled: true,
@@ -484,20 +452,6 @@ func overrideFromEnv(config *Config) {
 	if val := os.Getenv("WAL_DIRECTORY"); val != "" {
 		config.WAL.Directory = val
 	}
-	if val := os.Getenv("WAL_CHECK_INTERVAL"); val != "" {
-		if duration, err := time.ParseDuration(val); err == nil {
-			config.WAL.CheckInterval = duration
-		}
-	}
-	if val := os.Getenv("WAL_BACKEND"); val != "" {
-		config.WAL.Backend = val
-	}
-	if val := os.Getenv("WAL_STREAM_KEY"); val != "" {
-		config.WAL.StreamKey = val
-	}
-	if val := os.Getenv("WAL_CONSUMER_GROUP"); val != "" {
-		config.WAL.ConsumerGroup = val
-	}
 
 	// Batching
 	if val := os.Getenv("BATCHING_ENABLED"); val != "" {
@@ -655,22 +609,8 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate WAL
-	if c.WAL.Enabled {
-		switch c.WAL.Backend {
-		case "file":
-			if c.WAL.Directory == "" {
-				return fmt.Errorf("wal directory is required when wal backend is file")
-			}
-		case "redis":
-			if c.WAL.StreamKey == "" {
-				return fmt.Errorf("wal stream_key is required when wal backend is redis")
-			}
-			if c.WAL.ConsumerGroup == "" {
-				return fmt.Errorf("wal consumer_group is required when wal backend is redis")
-			}
-		default:
-			return fmt.Errorf("invalid wal backend: %q (must be \"file\" or \"redis\")", c.WAL.Backend)
-		}
+	if c.WAL.Enabled && c.WAL.Directory == "" {
+		return fmt.Errorf("wal directory is required when the WAL is enabled")
 	}
 
 	// Validate Batching

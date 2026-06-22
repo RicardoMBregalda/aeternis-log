@@ -44,7 +44,6 @@ fabric:
   channel: "logchannel"          # default channel (tenant "default")
   chaincode: "logchaincode"
   sync_enabled: true
-  sync_max_workers: 10
   invoke_timeout: 30s
   query_timeout: 10s
   transport: "gateway"
@@ -66,17 +65,7 @@ fabric:
 
 wal:
   enabled: true
-  backend: "file"
   directory: "/var/log/aeternislog-wal"
-  check_interval: 5s
-  max_file_size_mb: 100
-  rotation_enabled: true
-  retention_days: 7
-  stream_key: "wal:pending:logs"
-  consumer_group: "wal-processors"
-  read_count: 128
-  block_timeout: 2s
-  claim_min_idle: 30s
 
 # Auto-batch disabled so the isolation test controls exactly when each tenant's
 # records are anchored (manual force-batch). Force-batch still works.
@@ -92,7 +81,6 @@ logging:
   format: "json"
   output: "stdout"
   enable_caller: true
-  enable_stacktrace: false
 
 metrics:
   enabled: true

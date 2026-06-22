@@ -124,7 +124,7 @@ Rate limiting is in-memory **per instance**; a Redis-backed shared limiter is th
 
 ## Configuration
 
-The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `batching`, `logging`, `metrics`, `auth`, `rate_limit`.
+The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `wal`, `batching`, `logging`, `metrics`, `auth`, `rate_limit`.
 
 **Fabric transport:** the API talks to the peer via the **Fabric Gateway gRPC SDK** with an X.509 identity (no Docker socket required). The gateway paths default to the docker-compose `/fabric-crypto` mount — for a native run (outside compose) override the gateway endpoint/paths (see `api/.env.example`).
 
