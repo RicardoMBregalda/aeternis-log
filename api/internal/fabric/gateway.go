@@ -149,25 +149,25 @@ func newSign(keyDir string) (identity.Sign, error) {
 
 // Invoke submits a transaction (endorse + submit) on the given channel and
 // returns its transaction ID.
-func (b *gatewayBackend) Invoke(_ context.Context, channel, function string, args []string) (*InvokeResponse, error) {
+func (b *gatewayBackend) Invoke(ctx context.Context, channel, function string, args []string) (*InvokeResponse, error) {
 	proposal, err := b.contractFor(channel).NewProposal(function, client.WithArguments(args...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create proposal: %w", err)
 	}
-	transaction, err := proposal.Endorse()
+	transaction, err := proposal.EndorseWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to endorse transaction: %w", err)
 	}
 	result := transaction.Result()
 
-	commit, err := transaction.Submit()
+	commit, err := transaction.SubmitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to submit transaction: %w", err)
 	}
 	// A commit-status error (timeout, dropped connection) means the outcome is
 	// UNKNOWN — it must not be reported as a successful anchor. Treat it as a
 	// failure so the caller (and the reconciler) can re-drive the batch.
-	status, serr := commit.Status()
+	status, serr := commit.StatusWithContext(ctx)
 	if serr != nil {
 		return nil, fmt.Errorf("failed to obtain commit status for transaction %s: %w", transaction.TransactionID(), serr)
 	}
@@ -185,8 +185,8 @@ func (b *gatewayBackend) Invoke(_ context.Context, channel, function string, arg
 
 // Query evaluates a transaction (no ledger update) on the given channel and
 // returns the result.
-func (b *gatewayBackend) Query(_ context.Context, channel, function string, args []string) (*QueryResponse, error) {
-	result, err := b.contractFor(channel).EvaluateTransaction(function, args...)
+func (b *gatewayBackend) Query(ctx context.Context, channel, function string, args []string) (*QueryResponse, error) {
+	result, err := b.contractFor(channel).EvaluateWithContext(ctx, function, client.WithArguments(args...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate transaction: %w", err)
 	}
