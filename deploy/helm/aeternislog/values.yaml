@@ -103,6 +103,17 @@ webhook:
 wal:
   backend: file
 
+# Database schema migrations. Applied by a pre-install/pre-upgrade Job (see
+# templates/migrate-job.yaml), never at API boot — the API asserts the schema
+# version and refuses to start on a mismatch (F18).
+migrations:
+  enabled: true
+  backoffLimit: 3
+
+# DEMO single-pod MongoDB for evaluation only. It is NOT production-grade: no
+# replica set, no managed backups, a single PVC. For production run an external
+# managed replica set (Atlas, self-managed RS, ...): set mongodb.enabled=false
+# and point mongodb.url in config.yaml at it. See docs/runbook-migrations-and-upgrades.md.
 mongodb:
   enabled: true
   image: mongo:7.0
@@ -111,6 +122,10 @@ mongodb:
     limits: { cpu: "1", memory: 1Gi }
     requests: { cpu: 250m, memory: 256Mi }
 
+# DEMO single-pod Redis for evaluation only. NOT production-grade (no HA/failover).
+# For production use an external managed Redis: set redis.enabled=false and point
+# the API at it. Redis is an optional cache/limiter — the API degrades gracefully
+# if it is absent.
 redis:
   enabled: true
   image: redis:7-alpine

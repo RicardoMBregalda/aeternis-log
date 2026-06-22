@@ -18,12 +18,12 @@ type fakeAnchorer struct {
 	store func(batchID, root string) (*fabric.InvokeResponse, error)
 }
 
-func (f *fakeAnchorer) Enabled() bool                       { return true }
-func (f *fakeAnchorer) ChannelForTenant(string) string      { return "logchannel" }
-func (f *fakeAnchorer) StoreMerkleBatch(_ context.Context, _, batchID, root string, _ int, _ []string) (*fabric.InvokeResponse, error) {
+func (f *fakeAnchorer) Enabled() bool                  { return true }
+func (f *fakeAnchorer) ChannelForTenant(string) string { return "logchannel" }
+func (f *fakeAnchorer) StoreMerkleBatch(_ context.Context, _, _, batchID, root string, _ int, _ []string) (*fabric.InvokeResponse, error) {
 	return f.store(batchID, root)
 }
-func (f *fakeAnchorer) VerifyMerkleBatch(context.Context, string, string) (*fabric.QueryResponse, error) {
+func (f *fakeAnchorer) VerifyMerkleBatch(context.Context, string, string, string) (*fabric.QueryResponse, error) {
 	return nil, fmt.Errorf("does not exist")
 }
 

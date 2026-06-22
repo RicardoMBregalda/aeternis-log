@@ -14,7 +14,7 @@ import (
 // batchQuerier reads an anchored Merkle batch from the blockchain. *fabric.FabricClient
 // satisfies it; the small interface keeps the handler unit-testable.
 type batchQuerier interface {
-	VerifyMerkleBatch(ctx context.Context, channel, batchID string) (*fabric.QueryResponse, error)
+	VerifyMerkleBatch(ctx context.Context, tenant, channel, batchID string) (*fabric.QueryResponse, error)
 }
 
 // PublicHandler serves unauthenticated, read-only verification endpoints for
@@ -33,8 +33,10 @@ func NewPublicHandler(f batchQuerier, defaultChannel string) *PublicHandler {
 // GetAnchor handles GET /public/anchors/:batchId
 // @Summary Public anchor lookup
 // @Description Prove that a batch id is anchored on-chain (no authentication). Returns
-//             only the anchored Merkle root and timestamp — never tenant metadata. Pass
-//             ?root= to check whether a given Merkle root matches the anchored one.
+//
+//	only the anchored Merkle root and timestamp — never tenant metadata. Pass
+//	?root= to check whether a given Merkle root matches the anchored one.
+//
 // @Tags Public
 // @Produce json
 // @Param batchId path string true "Batch ID"
@@ -47,13 +49,14 @@ func (h *PublicHandler) GetAnchor(c *gin.Context) {
 	batchID := c.Param("batchId")
 	// F16: the channel is resolved SERVER-SIDE, never from a caller-supplied
 	// parameter, so this unauthenticated endpoint cannot be used to probe
-	// arbitrary channels.
+	// arbitrary channels. The query runs under the API's default identity (empty
+	// tenant) — this public proof is an org-level read, not a tenant-scoped one.
 	channel := h.defaultChannel
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	resp, err := h.fabric.VerifyMerkleBatch(ctx, channel, batchID)
+	resp, err := h.fabric.VerifyMerkleBatch(ctx, "", channel, batchID)
 	if err != nil {
 		// The chaincode returns "batch <id> does not exist" when nothing is anchored.
 		if strings.Contains(strings.ToLower(err.Error()), "does not exist") {

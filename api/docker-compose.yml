@@ -22,6 +22,9 @@ services:
       - FABRIC_API_URL=http://fabric-api:4000
       - WAL_DIRECTORY=/var/log/aeternislog-wal
       - LOG_LEVEL=info
+      # Dev convenience: apply DB migrations before the API starts. In Kubernetes
+      # this is a separate pre-upgrade Job and this stays unset (API asserts only).
+      - RUN_MIGRATIONS=true
       # Fabric uses the gateway (gRPC) transport with the crypto mounted at
       # /fabric-crypto and the paths in config.yaml.
     depends_on:
