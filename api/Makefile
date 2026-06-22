@@ -56,7 +56,10 @@ dev: swagger run ## Generate swagger and run
 # Swagger
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
-	swag init -g $(MAIN_PATH)/main.go -o ./docs --parseDependency --parseInternal
+	# All annotated response types live in internal/ (--parseInternal). --parseDependency
+	# is intentionally omitted: it makes swag parse external modules (e.g. mongo-driver,
+	# whose untyped const overflows uint64), which aborts generation.
+	swag init -g $(MAIN_PATH)/main.go -o ./docs --parseInternal
 	@echo "Swagger docs generated in ./docs"
 
 swagger-fmt: ## Format swagger comments
