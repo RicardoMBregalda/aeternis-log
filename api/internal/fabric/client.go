@@ -9,8 +9,8 @@ import (
 	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 )
 
-// FabricClient handles interactions with Hyperledger Fabric through a pluggable
-// transport Backend (docker-exec today; Fabric Gateway gRPC next).
+// FabricClient handles interactions with Hyperledger Fabric through the Fabric
+// Gateway gRPC transport Backend.
 type FabricClient struct {
 	Config  *config.FabricConfig
 	backend Backend
@@ -83,11 +83,6 @@ func (fc *FabricClient) VerifyMerkleBatch(ctx context.Context, channel, batchID 
 	return fc.QueryChaincode(ctx, channel, "QueryMerkleBatch", []string{batchID})
 }
 
-// GetBatchHistory retrieves the history of a batch from the given channel.
-func (fc *FabricClient) GetBatchHistory(ctx context.Context, channel, batchID string) (*QueryResponse, error) {
-	return fc.QueryChaincode(ctx, channel, "getBatchHistory", []string{batchID})
-}
-
 // Enabled reports whether Fabric anchoring is turned on.
 func (fc *FabricClient) Enabled() bool {
 	return fc.Config.SyncEnabled
@@ -121,8 +116,6 @@ func (fc *FabricClient) GetStats() map[string]interface{} {
 		"transport":      fc.Config.Transport,
 		"channel":        fc.Config.Channel,
 		"chaincode":      fc.Config.Chaincode,
-		"peer_container": fc.Config.PeerContainer,
-		"max_workers":    fc.Config.SyncMaxWorkers,
 		"invoke_timeout": fc.Config.InvokeTimeout.String(),
 		"query_timeout":  fc.Config.QueryTimeout.String(),
 	}

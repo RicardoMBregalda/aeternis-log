@@ -55,16 +55,15 @@ func TestValidateRateLimit(t *testing.T) {
 }
 
 func TestValidateFabric(t *testing.T) {
-	// docker-exec transport requires peer_container.
+	// The docker-exec transport was removed; it is now rejected.
 	c, err := LoadConfig("")
 	if err != nil {
 		t.Fatalf("default config should be valid: %v", err)
 	}
 	c.Fabric.SyncEnabled = true
 	c.Fabric.Transport = "docker-exec"
-	c.Fabric.PeerContainer = ""
 	if err := c.Validate(); err == nil {
-		t.Error("docker-exec: expected error without peer_container")
+		t.Error("docker-exec transport should be rejected (only gateway is supported)")
 	}
 
 	// gateway transport requires the identity/cert settings.

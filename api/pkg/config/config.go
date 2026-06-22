@@ -131,18 +131,9 @@ type FabricConfig struct {
 	InvokeTimeout  time.Duration `yaml:"invoke_timeout"`
 	QueryTimeout   time.Duration `yaml:"query_timeout"`
 
-	// Transport selects how the API talks to the peer:
-	//   "docker-exec" - shell out to the peer CLI (legacy, requires docker.sock)
-	//   "gateway"     - Fabric Gateway gRPC SDK
+	// Transport selects how the API talks to the peer. Only "gateway" (the Fabric
+	// Gateway gRPC SDK) is supported; an empty value defaults to gateway.
 	Transport string `yaml:"transport"`
-
-	// Connection details for the docker-exec transport (used until the SDK
-	// integration replaces it). Parameterized so the API is not tied to the dev
-	// docker-compose container names and certificate paths.
-	PeerContainer    string `yaml:"peer_container"`
-	OrdererAddress   string `yaml:"orderer_address"`
-	OrdererTLSCAFile string `yaml:"orderer_tls_ca_file"`
-	TLSEnabled       bool   `yaml:"tls_enabled"`
 
 	// Gateway transport settings (used when Transport == "gateway"). The
 	// identity is an X.509 enrollment (cert + private key) from the org MSP.
@@ -267,11 +258,7 @@ func LoadConfig(configPath string) (*Config, error) {
 			SyncMaxWorkers:   10,
 			InvokeTimeout:    30 * time.Second,
 			QueryTimeout:     10 * time.Second,
-			Transport:        "gateway",
-			PeerContainer:    "peer0.org1.example.com",
-			OrdererAddress:   "orderer.example.com:7050",
-			OrdererTLSCAFile: "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem",
-			TLSEnabled:       true,
+			Transport:                 "gateway",
 			MSPID:                     "Org1MSP",
 			GatewayPeerEndpoint:       "peer0.org1.example.com:7051",
 			GatewayServerNameOverride: "peer0.org1.example.com",
@@ -452,18 +439,6 @@ func overrideFromEnv(config *Config) {
 	}
 	if val := os.Getenv("FABRIC_TRANSPORT"); val != "" {
 		config.Fabric.Transport = val
-	}
-	if val := os.Getenv("FABRIC_PEER_CONTAINER"); val != "" {
-		config.Fabric.PeerContainer = val
-	}
-	if val := os.Getenv("FABRIC_ORDERER_ADDRESS"); val != "" {
-		config.Fabric.OrdererAddress = val
-	}
-	if val := os.Getenv("FABRIC_ORDERER_TLS_CA_FILE"); val != "" {
-		config.Fabric.OrdererTLSCAFile = val
-	}
-	if val := os.Getenv("FABRIC_TLS_ENABLED"); val != "" {
-		config.Fabric.TLSEnabled = val == "true"
 	}
 	if val := os.Getenv("FABRIC_MSP_ID"); val != "" {
 		config.Fabric.MSPID = val
@@ -667,25 +642,15 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("fabric chaincode is required")
 	}
 	switch c.Fabric.Transport {
-	case "", "docker-exec", "gateway":
+	case "", "gateway":
 	default:
-		return fmt.Errorf("invalid fabric transport: %q (docker-exec|gateway)", c.Fabric.Transport)
+		return fmt.Errorf("invalid fabric transport: %q (only \"gateway\" is supported)", c.Fabric.Transport)
 	}
 	if c.Fabric.SyncEnabled {
-		switch c.Fabric.Transport {
-		case "", "docker-exec":
-			if c.Fabric.PeerContainer == "" {
-				return fmt.Errorf("fabric peer_container is required for the docker-exec transport")
-			}
-			if c.Fabric.TLSEnabled && c.Fabric.OrdererTLSCAFile == "" {
-				return fmt.Errorf("fabric orderer_tls_ca_file is required when tls is enabled")
-			}
-		case "gateway":
-			if c.Fabric.MSPID == "" || c.Fabric.GatewayPeerEndpoint == "" ||
-				c.Fabric.GatewayPeerTLSCAFile == "" || c.Fabric.IdentityCertFile == "" ||
-				c.Fabric.IdentityKeyDir == "" {
-				return fmt.Errorf("fabric gateway transport requires msp_id, gateway_peer_endpoint, gateway_peer_tls_ca_file, identity_cert_file and identity_key_dir")
-			}
+		if c.Fabric.MSPID == "" || c.Fabric.GatewayPeerEndpoint == "" ||
+			c.Fabric.GatewayPeerTLSCAFile == "" || c.Fabric.IdentityCertFile == "" ||
+			c.Fabric.IdentityKeyDir == "" {
+			return fmt.Errorf("fabric gateway transport requires msp_id, gateway_peer_endpoint, gateway_peer_tls_ca_file, identity_cert_file and identity_key_dir")
 		}
 	}
 

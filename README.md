@@ -126,7 +126,7 @@ Rate limiting is in-memory **per instance**; a Redis-backed shared limiter is th
 
 The API reads `api/config.yaml` and accepts overrides via environment variables (see `api/.env.example`). Sections: `server`, `mongodb`, `redis`, `fabric`, `batching`, `logging`, `metrics`, `auth`, `rate_limit`.
 
-**Fabric transport:** the API talks to the peer via `fabric.transport`. `gateway` (default) uses the Fabric Gateway gRPC SDK with an X.509 identity and needs no Docker socket; `docker-exec` is the legacy fallback that shells out to the peer CLI. The gateway paths default to the docker-compose `/fabric-crypto` mount — for a native run (outside compose) set `FABRIC_TRANSPORT=docker-exec`, or override the gateway endpoint/paths (see `api/.env.example`).
+**Fabric transport:** the API talks to the peer via the **Fabric Gateway gRPC SDK** with an X.509 identity (no Docker socket required). The gateway paths default to the docker-compose `/fabric-crypto` mount — for a native run (outside compose) override the gateway endpoint/paths (see `api/.env.example`).
 
 ## Development
 
