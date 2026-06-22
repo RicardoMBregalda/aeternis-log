@@ -18,6 +18,7 @@ import (
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/merkle"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/metrics"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/middleware"
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/migrations"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/wal"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/webhook"
@@ -95,6 +96,14 @@ func main() {
 	}
 	defer mongoClient.Close(context.Background())
 	lg.Info().Str("database", cfg.MongoDB.Database).Msg("MongoDB connected")
+
+	// Schema is migrated out-of-band (cmd/migrate / the Helm migration Job).
+	// Boot only asserts the version and refuses to start on a mismatch — it
+	// never mutates the schema (F18).
+	if err := migrations.AssertVersion(context.Background(), mongoClient.Database, migrations.TargetVersion()); err != nil {
+		lg.Fatal().Err(err).Msg("database schema check failed")
+	}
+	lg.Info().Int("schema_version", migrations.TargetVersion()).Msg("database schema verified")
 
 	collections := database.NewCollections(mongoClient)
 
@@ -340,7 +349,6 @@ func registerRoutes(
 		reports.GET("/report", reportHandler.AuditReportJSON)
 		reports.GET("/report.pdf", reportHandler.AuditReportPDF)
 	}
-
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }

@@ -58,42 +58,10 @@ func NewMongoClient(cfg *config.MongoDBConfig) (*MongoClient, error) {
 		Config:   cfg,
 	}
 
-	// Create indexes
-	if err := mongoClient.CreateIndexes(context.Background()); err != nil {
-		return nil, fmt.Errorf("failed to create indexes: %w", err)
-	}
-
+	// Schema (indexes) is applied out-of-band by the migration runner
+	// (internal/migrations, cmd/migrate), not here: connecting must never mutate
+	// the schema. The API asserts the expected version at boot (see main.go).
 	return mongoClient, nil
-}
-
-// CreateIndexes creates optimized compound indexes for the collections
-func (mc *MongoClient) CreateIndexes(ctx context.Context) error {
-	// Records collection indexes (generic domain-scoped records)
-	recordsCollection := mc.Database.Collection(mc.Config.RecordsCollection)
-	recordsIndexes := []mongo.IndexModel{
-		{
-			// Unique per (tenant, domain): the same id can exist across tenants/domains.
-			Keys:    bson.D{{Key: "tenant", Value: 1}, {Key: "domain", Value: 1}, {Key: "id", Value: 1}},
-			Options: options.Index().SetUnique(true),
-		},
-		{
-			// Tenant+domain-scoped listing and (created_at, id) keyset pagination.
-			Keys: bson.D{
-				{Key: "tenant", Value: 1},
-				{Key: "domain", Value: 1},
-				{Key: "created_at", Value: -1},
-				{Key: "id", Value: -1},
-			},
-		},
-		{
-			Keys: bson.D{{Key: "tenant", Value: 1}, {Key: "domain", Value: 1}, {Key: "batch_id", Value: 1}},
-		},
-	}
-	if _, err := recordsCollection.Indexes().CreateMany(ctx, recordsIndexes); err != nil {
-		return fmt.Errorf("failed to create records indexes: %w", err)
-	}
-
-	return nil
 }
 
 // Close closes the MongoDB connection

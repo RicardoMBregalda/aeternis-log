@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/migrations"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/internal/models"
 	"github.com/RicardoMBregalda/aeternis-log/go-api/pkg/config"
 	"github.com/google/uuid"
@@ -253,8 +254,9 @@ func TestInsertRecordDuplicate(t *testing.T) {
 	defer client.Close(context.Background())
 	ctx := context.Background()
 	client.Database.Collection(cfg.RecordsCollection).Drop(ctx)
-	if err := client.CreateIndexes(ctx); err != nil {
-		t.Fatalf("create indexes: %v", err)
+	client.Database.Collection(migrations.SchemaCollection).Drop(ctx)
+	if _, err := migrations.NewRunner(client.Database, cfg).Apply(ctx); err != nil {
+		t.Fatalf("apply migrations: %v", err)
 	}
 
 	collections := NewCollections(client)
