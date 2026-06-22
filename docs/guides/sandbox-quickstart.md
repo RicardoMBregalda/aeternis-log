@@ -77,7 +77,7 @@ aeternislog verify --file records.csv --api http://localhost:5001 --domain audit
 ## 5. Dashboard
 
 ```bash
-python3 -m http.server 8088 --directory dashboard   # then open http://localhost:8088
+python3 -m http.server 8088 --directory examples/dashboard   # then open http://localhost:8088
 ```
 
 ## 6. One-command smoke test

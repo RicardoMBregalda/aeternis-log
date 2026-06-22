@@ -42,20 +42,13 @@ fabric:
   channel: "logchannel"
   chaincode: "logchaincode"
   sync_enabled: true
-  sync_max_workers: 10
   invoke_timeout: 30s
   query_timeout: 10s
-  # transport: "gateway" (gRPC SDK, default) or "docker-exec" (legacy, requires docker.sock)
+  # Only the "gateway" (Fabric Gateway gRPC SDK) transport is supported.
   transport: "gateway"
-  # Connection details for the docker-exec transport (parameterized so the API
-  # is not tied to the dev container names / cert paths).
-  peer_container: "peer0.org1.example.com"
-  orderer_address: "orderer.example.com:7050"
-  orderer_tls_ca_file: "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
-  tls_enabled: true
   # Gateway (gRPC) transport settings. Paths point at the crypto-config mounted
-  # by docker-compose at /fabric-crypto. For a native run, override these (and
-  # gateway_peer_endpoint) or set transport: docker-exec.
+  # by docker-compose at /fabric-crypto. For a native run, override these and
+  # gateway_peer_endpoint.
   msp_id: "Org1MSP"
   gateway_peer_endpoint: "peer0.org1.example.com:7051"
   gateway_server_name_override: "peer0.org1.example.com"
@@ -69,24 +62,10 @@ fabric:
   # tenant_channels:
   #   acme: "acme-channel"
 
+# Durable, append-only file WAL fronting the record-create path.
 wal:
   enabled: true
-  # backend: "file" (local, single instance) or "redis" (Redis Streams,
-  # supports running multiple API instances). In "redis" mode durability
-  # depends on Redis persistence: run Redis with AOF enabled
-  # (appendonly yes; appendfsync always for parity with the file fsync).
-  backend: "file"
   directory: "/var/log/aeternislog-wal"
-  check_interval: 5s
-  max_file_size_mb: 100
-  rotation_enabled: true
-  retention_days: 7
-  # Redis Streams backend settings (used when backend == "redis")
-  stream_key: "wal:pending:logs"
-  consumer_group: "wal-processors"
-  read_count: 128
-  block_timeout: 2s
-  claim_min_idle: 30s
 
 batching:
   enabled: true
@@ -100,7 +79,6 @@ logging:
   format: "json"  # json or console
   output: "stdout"  # stdout or file path
   enable_caller: true
-  enable_stacktrace: false
 
 metrics:
   enabled: true

@@ -9,14 +9,15 @@ import (
 )
 
 func TestNewFabricClient(t *testing.T) {
+	// Sync disabled -> the client constructs cleanly (no-op backend, no identity
+	// or connectivity required).
 	cfg := &config.FabricConfig{
-		Channel:        "logchannel",
-		Chaincode:      "logchaincode",
-		Transport:      "docker-exec",
-		SyncEnabled:    true,
-		SyncMaxWorkers: 10,
-		InvokeTimeout:  30 * time.Second,
-		QueryTimeout:   10 * time.Second,
+		Channel:       "logchannel",
+		Chaincode:     "logchaincode",
+		Transport:     "gateway",
+		SyncEnabled:   false,
+		InvokeTimeout: 30 * time.Second,
+		QueryTimeout:  10 * time.Second,
 	}
 
 	client, err := NewFabricClient(cfg)
@@ -36,30 +37,32 @@ func TestNewFabricClientTransport(t *testing.T) {
 	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: false, Transport: "gateway"}); err != nil {
 		t.Errorf("disabled sync should not construct a backend: %v", err)
 	}
-	// Unknown transport is rejected when sync is enabled.
+	// An unknown transport is rejected when sync is enabled.
 	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: true, Transport: "bogus"}); err == nil {
 		t.Error("expected error for unknown transport")
 	}
-	// Gateway with no identity/cert configured fails to construct.
+	// The legacy docker-exec transport was removed and is rejected.
+	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: true, Transport: "docker-exec"}); err == nil {
+		t.Error("expected docker-exec transport to be rejected")
+	}
+	// Gateway (the only transport) with no identity/cert configured fails fast.
 	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: true, Transport: "gateway"}); err == nil {
 		t.Error("expected error for gateway with missing identity/cert config")
 	}
-	// Empty transport with sync enabled defaults to docker-exec.
-	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: true}); err != nil {
-		t.Errorf("empty transport should default to docker-exec: %v", err)
+	// An empty transport defaults to gateway, so it too fails without identity.
+	if _, err := NewFabricClient(&config.FabricConfig{SyncEnabled: true}); err == nil {
+		t.Error("empty transport should default to gateway and fail without identity")
 	}
 }
 
 func TestFabricClientStats(t *testing.T) {
 	cfg := &config.FabricConfig{
-		Channel:        "logchannel",
-		Chaincode:      "logchaincode",
-		Transport:      "docker-exec",
-		PeerContainer:  "peer0",
-		SyncEnabled:    true,
-		SyncMaxWorkers: 10,
-		InvokeTimeout:  30 * time.Second,
-		QueryTimeout:   10 * time.Second,
+		Channel:       "logchannel",
+		Chaincode:     "logchaincode",
+		Transport:     "gateway",
+		SyncEnabled:   false,
+		InvokeTimeout: 30 * time.Second,
+		QueryTimeout:  10 * time.Second,
 	}
 
 	client, err := NewFabricClient(cfg)
@@ -68,23 +71,20 @@ func TestFabricClientStats(t *testing.T) {
 	}
 	stats := client.GetStats()
 
-	if stats["enabled"] != true {
-		t.Error("Expected enabled to be true")
+	if stats["enabled"] != false {
+		t.Error("Expected enabled to be false")
 	}
-	if stats["transport"] != "docker-exec" {
-		t.Errorf("Expected transport 'docker-exec', got %v", stats["transport"])
+	if stats["transport"] != "gateway" {
+		t.Errorf("Expected transport 'gateway', got %v", stats["transport"])
 	}
 	if stats["channel"] != "logchannel" {
 		t.Errorf("Expected channel 'logchannel', got %v", stats["channel"])
 	}
-	if stats["max_workers"] != 10 {
-		t.Errorf("Expected max_workers 10, got %v", stats["max_workers"])
-	}
 }
 
-// TestFabricDisabled tests client with sync disabled.
+// TestFabricDisabled tests the client with sync disabled.
 func TestFabricDisabled(t *testing.T) {
-	client, err := NewFabricClient(&config.FabricConfig{SyncEnabled: false, Transport: "docker-exec"})
+	client, err := NewFabricClient(&config.FabricConfig{SyncEnabled: false, Transport: "gateway"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestStoreMerkleBatchDisabled(t *testing.T) {
 	client, err := NewFabricClient(&config.FabricConfig{
 		Channel:       "logchannel",
 		Chaincode:     "logchaincode",
-		Transport:     "docker-exec",
+		Transport:     "gateway",
 		SyncEnabled:   false,
 		InvokeTimeout: 30 * time.Second,
 	})
@@ -117,5 +117,5 @@ func TestStoreMerkleBatchDisabled(t *testing.T) {
 	}
 }
 
-// Note: integration tests that actually call docker/Fabric belong in a separate
-// suite with a running Fabric network.
+// Note: integration tests that actually call Fabric belong in a separate suite
+// with a running Fabric network.
