@@ -28,6 +28,22 @@ export default defineConfig({
           'https://github.com/RicardoMBregalda/aeternis-log/edit/main/website/',
       },
       lastUpdated: true,
+      // Code blocks adapt to the site theme (dark on dark, light on light).
+      expressiveCode: {
+        themes: ['github-dark', 'github-light'],
+        // Let Expressive Code own the frame so the title/terminal header and the
+        // code stay one connected, square frame.
+        styleOverrides: {
+          borderRadius: '12px',
+          borderColor: 'var(--al-line)',
+          frameBoxShadowCssValue: 'var(--al-code-shadow)',
+          codeFontFamily: 'var(--sl-font-mono)',
+        },
+      },
+      components: {
+        // Custom segmented light/dark/system toggle (replaces the default select).
+        ThemeSelect: './src/components/ThemeSelect.astro',
+      },
       head: [
         {
           tag: 'meta',

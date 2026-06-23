@@ -61,4 +61,4 @@ for multi-tenant deployments.
 ## How do I get support?
 
 Community support is via [GitHub](https://github.com/RicardoMBregalda/aeternis-log/issues).
-For SLAs and assisted deployments, see [pricing & contact](/aeternis-log/commercial/pricing/).
+For SLAs and assisted deployments, [open an issue](https://github.com/RicardoMBregalda/aeternis-log/issues/new).

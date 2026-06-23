@@ -42,5 +42,5 @@ boundaries are finalized with each customer.
 - **Enterprise** — multi-tenant SaaS, regulated workloads, or any deployment that
   needs ledger-level isolation, production datastores, and support.
 
-See [pricing & contact](/aeternis-log/commercial/pricing/) to discuss a commercial
-deployment.
+To discuss a commercial deployment,
+[open an issue on GitHub](https://github.com/RicardoMBregalda/aeternis-log/issues/new).
