@@ -63,3 +63,27 @@ credential provisioning + configuration:
 Until a tenant is configured with its own identity, its anchors use the default
 identity and fall back to the MSP-ID partition (org-level isolation), which is
 still enforced — never the old shared, unscoped keyspace.
+
+## Known limitations (must be resolved before per-tenant identities go live)
+
+These do not affect the current single-identity deployment (every batch is under
+the default identity), but they bite the moment per-tenant identities or a
+chaincode upgrade over existing data are activated:
+
+- **Public verification is default-identity only.** `GET /public/anchors/{id}`
+  is unauthenticated and has no tenant, so it queries under the API's default
+  identity. A batch anchored under a *per-tenant* identity lives in a different
+  composite-key partition and the public endpoint will report it **not anchored**
+  even though it is. Until the public path resolves the tenant (the signed,
+  tenant-scoped batch token from F16, or a verified mapping from the batch id),
+  public proofs only cover default-identity batches. Authenticated verification
+  (`POST .../records/verify/{batchId}`) is unaffected — it runs under the tenant.
+
+- **The composite-key change is not backward-compatible.** Batches anchored
+  under the pre-F14 `batch_<batchID>` scheme are not found by the tenant-scoped
+  `QueryMerkleBatch`/`GetAllMerkleBatches`, so after the chaincode upgrade they
+  read as *"does not exist"* and verify reports them unanchored. Deploy the
+  upgrade on a **clean ledger**, or plan a one-time migration that re-keys
+  existing batches under `(tenant, batchID)` — a naive dual-read fallback to the
+  old key is **not** acceptable, since those keys carry no tenant scope and would
+  reintroduce the cross-tenant leak this finding closes.
