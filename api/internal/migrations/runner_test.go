@@ -115,3 +115,19 @@ func TestMigration0001CreatesUniqueRecordsIndex(t *testing.T) {
 		t.Fatalf("duplicate insert: want duplicate-key error, got %v", err)
 	}
 }
+
+// TestSchemaVersionIsUnique proves the runner enforces one record per version, so
+// two runners racing to apply the same migration can't both record it (the loser
+// fails loudly instead of silently double-applying).
+func TestSchemaVersionIsUnique(t *testing.T) {
+	db, cfg := testDB(t)
+	ctx := context.Background()
+	if _, err := migrations.NewRunner(db, cfg).Apply(ctx); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	// A second record for an applied version must be rejected by Mongo.
+	dup := bson.D{{Key: "version", Value: 1}, {Key: "name", Value: "dup"}, {Key: "applied_at", Value: time.Now()}}
+	if _, err := db.Collection(migrations.SchemaCollection).InsertOne(ctx, dup); err == nil || !mongo.IsDuplicateKeyError(err) {
+		t.Fatalf("duplicate version insert: want duplicate-key error, got %v", err)
+	}
+}

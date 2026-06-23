@@ -49,10 +49,29 @@ func CurrentVersion(ctx context.Context, db *mongo.Database) (int, error) {
 	return rec.Version, nil
 }
 
+// ensureVersionIndex enforces one record per schema version, so two runners
+// racing to apply the same migration cannot both record it.
+func (r *Runner) ensureVersionIndex(ctx context.Context) error {
+	_, err := r.db.Collection(SchemaCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "version", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		return fmt.Errorf("ensure %s index: %w", SchemaCollection, err)
+	}
+	return nil
+}
+
 // Apply runs every pending migration in version order and records each one. It
 // is idempotent: a second run with nothing pending applies nothing and returns
-// 0. It returns the number of migrations applied.
+// 0. It returns the number of migrations applied. If another runner records the
+// same version concurrently, the duplicate insert fails loudly rather than
+// silently double-applying.
 func (r *Runner) Apply(ctx context.Context) (int, error) {
+	if err := r.ensureVersionIndex(ctx); err != nil {
+		return 0, err
+	}
+
 	current, err := CurrentVersion(ctx, r.db)
 	if err != nil {
 		return 0, err
@@ -76,6 +95,9 @@ func (r *Runner) Apply(ctx context.Context) (int, error) {
 			Name:      m.Name,
 			AppliedAt: time.Now().UTC(),
 		})
+		if mongo.IsDuplicateKeyError(err) {
+			return applied, fmt.Errorf("migration %d (%s) was recorded concurrently by another runner; aborting", m.Version, m.Name)
+		}
 		if err != nil {
 			return applied, fmt.Errorf("record migration %d (%s): %w", m.Version, m.Name, err)
 		}
