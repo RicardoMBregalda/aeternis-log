@@ -43,9 +43,20 @@ peerca() { echo "$ORG_BASE/org${1}.example.com/peers/peer0.org${1}.example.com/t
 
 # Derive the next sequence from what is currently committed, unless given.
 setorg 1
-CURRENT_SEQ=$(peer lifecycle chaincode querycommitted --channelID "$CHANNEL" --name "$CC_NAME" 2>/dev/null \
-  | sed -n 's/.*Sequence: \([0-9]\+\).*/\1/p' | head -1)
-CURRENT_SEQ="${CURRENT_SEQ:-0}"
+QC=$(peer lifecycle chaincode querycommitted --channelID "$CHANNEL" --name "$CC_NAME" 2>/dev/null) || true
+if [ -n "$QC" ]; then
+  # The chaincode is already committed: parse its sequence. A committed chaincode
+  # whose sequence we cannot read is an error, not a silent "start at 1".
+  CURRENT_SEQ=$(printf '%s\n' "$QC" | sed -n 's/.*Sequence: \([0-9]\+\).*/\1/p' | head -1)
+  if [ -z "$CURRENT_SEQ" ]; then
+    echo "ERROR: '$CC_NAME' is committed but its sequence could not be parsed from:" >&2
+    printf '%s\n' "$QC" >&2
+    echo "Pass the new sequence explicitly: upgrade-chaincode.sh <version> <sequence>" >&2
+    exit 2
+  fi
+else
+  CURRENT_SEQ=0   # not committed yet — this is the first deploy
+fi
 CC_SEQ="${2:-$((CURRENT_SEQ + 1))}"
 if [ "$CC_SEQ" -le "$CURRENT_SEQ" ]; then
   echo "ERROR: new sequence $CC_SEQ must be greater than the committed sequence $CURRENT_SEQ" >&2

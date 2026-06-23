@@ -79,6 +79,13 @@ Because anchors are write-once, an upgrade never rewrites existing batches; new
 behavior (e.g. tenant-scoped keys) applies to batches anchored after the commit.
 Sequence with the schema migration above when a change spans both layers.
 
+> **Breaking change — F14 tenant-scoped keys.** The F14 upgrade moves batch
+> state from `batch_<batchID>` to a composite `(tenant, batchID)` key. Batches
+> anchored under the old scheme are **not** readable by the new chaincode (verify
+> reports them unanchored). Apply this upgrade on a clean ledger, or plan a
+> one-time re-keying migration first. See `docs/tenant-isolation-guarantee.md`
+> ("Known limitations").
+
 ## 3. Datastores
 
 The Helm chart ships **demo single-pod** MongoDB and Redis for evaluation. They
