@@ -63,35 +63,96 @@
     radial-gradient(760px 420px at 0% 4%, rgba(129, 140, 248, 0.06), transparent 55%);
 }
 
-/* Sidebar: active item gets a cyan accent bar + tint. */
+/* ===================== SIDEBAR (modern, airy nav) ===================== */
+/* Group labels: small uppercase, generous air above. */
+.sidebar-content .large {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.085em;
+  font-weight: 650;
+  color: var(--sl-color-gray-3);
+  margin-block: 1.3rem 0.3rem;
+}
+.sidebar-content > ul > li:first-child > .large { margin-top: 0.2rem; }
+
+/* Links: rounded, comfortable, quiet by default. */
+.sidebar-content a,
+.sidebar-content summary {
+  border-radius: 8px;
+  padding: 0.32rem 0.6rem;
+  font-size: 0.905rem;
+  line-height: 1.4;
+  color: var(--sl-color-gray-2);
+  transition: color 0.14s ease, background 0.14s ease;
+}
+.sidebar-content a:hover {
+  color: var(--sl-color-white);
+  background: color-mix(in srgb, var(--sl-color-gray-5) 36%, transparent);
+}
+
+/* Nested groups: a subtle guide rail. */
+.sidebar-content ul ul {
+  margin-inline-start: 0.5rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 1px solid var(--al-line);
+}
+
+/* Active item: tint + bold, and the guide rail lights up cyan beside it. */
+.sidebar-content a { position: relative; }
 .sidebar-content a[aria-current='page'],
 .sidebar-content a[aria-current='page']:hover {
   color: var(--sl-color-white);
   background: var(--al-accent-tint);
-  border-radius: 7px;
-  position: relative;
   font-weight: 600;
 }
-.sidebar-content a[aria-current='page']::before {
+.sidebar-content ul ul a[aria-current='page']::before {
   content: '';
   position: absolute;
-  inset-inline-start: -0.6rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 1.05em;
+  inset-inline-start: -0.76rem;
+  top: 0.18rem;
+  bottom: 0.18rem;
+  width: 2px;
   border-radius: 2px;
   background: var(--al-cyan);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
 }
-.sidebar-content summary,
-.sidebar-content a { border-radius: 7px; }
-.sidebar-content .large { letter-spacing: 0.01em; }
 
-/* Right TOC: active link in accent. */
+/* Right TOC ("On this page"): tighter, accent active state. */
+starlight-toc nav > h2 {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sl-color-gray-3);
+}
+starlight-toc a {
+  border-radius: 6px;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+starlight-toc a:hover { color: var(--sl-color-white); }
 starlight-toc a[aria-current='true'] {
   color: var(--sl-color-accent-high);
   font-weight: 600;
+  background: var(--al-accent-tint);
 }
+
+/* Search button: softer corners. */
+site-search button {
+  border-radius: 10px;
+}
+
+/* Prev / next pager: branded cards with a hover lift. */
+.pagination-links a {
+  border-radius: 12px;
+  border-color: var(--al-line);
+  background: var(--al-surface);
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.pagination-links a:hover {
+  border-color: color-mix(in srgb, var(--sl-color-accent) 55%, var(--al-line));
+  transform: translateY(-2px);
+  box-shadow: var(--al-code-shadow);
+}
+.pagination-links a > span:last-child { color: var(--sl-color-white); font-weight: 620; }
 
 /* ============================ CONTENT TYPOGRAPHY ============================ */
 .sl-markdown-content {
@@ -149,20 +210,10 @@ starlight-toc a[aria-current='true'] {
   font-size: 0.86em;
 }
 
-/* Code blocks (Expressive Code): rounded, framed, soft shadow. */
-.expressive-code .frame {
-  border-radius: 12px;
-}
-.expressive-code .frame pre {
-  border: 1px solid var(--al-line);
-  border-radius: 12px;
-  box-shadow: var(--al-code-shadow);
-}
-.expressive-code .frame.has-title .header,
-.expressive-code .frame.is-terminal .header {
-  border-start-start-radius: 12px;
-  border-start-end-radius: 12px;
-}
+/* Code blocks: border/radius/shadow are handled by Expressive Code's own
+   styleOverrides (astro.config.mjs) so the header and code stay one connected
+   frame. Just add breathing room here. */
+.expressive-code { margin: 1.15rem 0; }
 
 /* Blockquotes: accent edge. */
 .sl-markdown-content blockquote {

@@ -31,7 +31,14 @@ export default defineConfig({
       // Code blocks adapt to the site theme (dark on dark, light on light).
       expressiveCode: {
         themes: ['github-dark', 'github-light'],
-        styleOverrides: { borderRadius: '12px', codeFontFamily: 'var(--sl-font-mono)' },
+        // Let Expressive Code own the frame so the title/terminal header and the
+        // code stay one connected, square frame.
+        styleOverrides: {
+          borderRadius: '12px',
+          borderColor: 'var(--al-line)',
+          frameBoxShadowCssValue: 'var(--al-code-shadow)',
+          codeFontFamily: 'var(--sl-font-mono)',
+        },
       },
       components: {
         // Custom segmented light/dark/system toggle (replaces the default select).
