@@ -25,9 +25,10 @@ help: ## Show this help
 up: blockchain api ## Bring up EVERYTHING in the right order: blockchain then API
 	@echo ""
 	@echo "Stack is up."
-	@echo "   API:     http://localhost:5001"
-	@echo "   Health:  http://localhost:5001/health"
-	@echo "   Swagger: http://localhost:5001/swagger/index.html"
+	@echo "   API:       http://localhost:5001"
+	@echo "   Health:    http://localhost:5001/health"
+	@echo "   Swagger:   http://localhost:5001/swagger/index.html"
+	@echo "   Dashboard: http://localhost:8088"
 
 .PHONY: down
 down: ## Stop EVERYTHING (API + blockchain), keep the data
@@ -56,9 +57,14 @@ blockchain: network ## Bring up only the Hyperledger Fabric network (generates c
 	@cd $(FABRIC_DIR) && yes n | ./start-network.sh
 
 .PHONY: api
-api: network ## Bring up only the API (build + MongoDB + Redis + API)
+api: network ## Bring up the API stack (build + MongoDB + Redis + API + dashboard)
 	@echo "Bringing up the API..."
 	@cd $(API_DIR) && docker compose up -d --build
+
+.PHONY: dashboard
+dashboard: network ## Bring up only the integrity dashboard (static, nginx on :8088)
+	@cd $(API_DIR) && docker compose up -d dashboard
+	@echo "Dashboard is up: http://localhost:8088"
 
 .PHONY: dev
 dev: network ## Bring up only MongoDB + Redis (to run the API natively / for tests)
@@ -68,6 +74,10 @@ dev: network ## Bring up only MongoDB + Redis (to run the API natively / for tes
 .PHONY: api-logs
 api-logs: ## Follow the API logs
 	@cd $(API_DIR) && docker compose logs -f go-api
+
+.PHONY: dashboard-logs
+dashboard-logs: ## Follow the dashboard (nginx) logs
+	@cd $(API_DIR) && docker compose logs -f dashboard
 
 .PHONY: blockchain-logs
 blockchain-logs: ## Follow the Fabric CLI logs (channel/chaincode setup)

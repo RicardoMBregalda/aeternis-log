@@ -76,8 +76,12 @@ aeternislog verify --file records.csv --api http://localhost:5001 --domain audit
 
 ## 5. Dashboard
 
+`make up` already serves it (nginx) at http://localhost:8088. To (re)start just
+the dashboard, or to serve it without Docker:
+
 ```bash
-python3 -m http.server 8088 --directory examples/dashboard   # then open http://localhost:8088
+make dashboard                                               # nginx on :8088
+python3 -m http.server 8088 --directory examples/dashboard   # or, without Docker
 ```
 
 ## 6. One-command smoke test
