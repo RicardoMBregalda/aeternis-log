@@ -3,214 +3,1083 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AeternisLog — Integrity Dashboard</title>
+  <title>AeternisLog - Integrity Dashboard</title>
   <style>
-    :root { --bg:#0f172a; --panel:#1e293b; --line:#334155; --fg:#e2e8f0; --muted:#94a3b8;
-            --accent:#38bdf8; --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
-    * { box-sizing: border-box; }
-    body { margin:0; font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
-    header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
-    header h1 { font-size:18px; margin:0; font-weight:600; }
-    header .dot { width:10px; height:10px; border-radius:50%; background:var(--muted); }
-    header .dot.up { background:var(--ok); } header .dot.down { background:var(--bad); }
-    main { max-width:1100px; margin:0 auto; padding:24px; display:grid; gap:24px; }
-    .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px; }
-    .panel h2 { margin:0 0 14px; font-size:15px; font-weight:600; color:var(--accent); }
-    label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
-    input { width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--line);
-            border-radius:6px; color:var(--fg); font:inherit; }
-    .row { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:12px; align-items:end; }
-    button { padding:8px 14px; background:var(--accent); color:#04222f; border:0; border-radius:6px;
-             font-weight:600; cursor:pointer; }
-    button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
-    button:disabled { opacity:.5; cursor:not-allowed; }
-    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; }
-    .stat { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:14px; }
-    .stat .n { font-size:24px; font-weight:700; }
-    .stat .l { font-size:12px; color:var(--muted); }
+    /* ---- Design tokens -------------------------------------------------------
+       One accent (sky) drives every interactive element, the brand mark and the
+       neutral data series. Green / amber / red are reserved STRICTLY for status,
+       so colour always carries meaning. Radii: surfaces 16, controls 10, pills full. */
+    :root {
+      --bg:#0b1120; --surface:#111a2e; --surface-2:#16213a; --surface-3:#1c2942;
+      --line:#243248; --line-2:#2e3e58;
+      --fg:#e8eef9; --muted:#9fb0cb; --faint:#6b7c9a;
+
+      --accent:#38bdf8; --accent-ink:#03212e; --accent-weak:rgba(56,189,248,.12);
+      --ok:#34d399; --ok-weak:rgba(52,211,153,.14);
+      --warn:#fbbf24; --warn-weak:rgba(251,191,36,.14);
+      --bad:#f87171; --bad-weak:rgba(248,113,113,.14);
+
+      --r-surface:16px; --r-control:10px; --r-pill:999px;
+      --shadow:0 10px 30px -14px rgba(0,0,0,.55);
+      --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+      --sans:system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    }
+    * { box-sizing:border-box; }
+    html,body { height:100%; }
+    body {
+      margin:0; color:var(--fg); background:var(--bg);
+      font:14px/1.55 var(--sans);
+      -webkit-font-smoothing:antialiased;
+    }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+
+    /* Accessible focus ring on every interactive element. */
+    :focus-visible {
+      outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;
+    }
+
+    /* ---- Header --------------------------------------------------------------- */
+    header {
+      position:sticky; top:0; z-index:20; height:64px;
+      display:flex; align-items:center; gap:16px; padding:0 22px;
+      background:rgba(11,17,32,.82); backdrop-filter:blur(10px);
+      border-bottom:1px solid var(--line);
+    }
+    .brand { display:flex; align-items:center; gap:11px; min-width:0; }
+    .brand .mark {
+      width:34px; height:34px; border-radius:10px; flex:none; display:grid; place-items:center;
+      background:linear-gradient(140deg,var(--accent),#0ea5e9); color:var(--accent-ink);
+      font-weight:800; font-size:17px; letter-spacing:-.5px;
+    }
+    .brand h1 { font-size:15px; margin:0; font-weight:650; letter-spacing:.1px; line-height:1.15; }
+    .brand h1 small { display:block; font-size:11px; color:var(--muted); font-weight:500; }
+    .spacer { margin-left:auto; }
+
+    .health { display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+    .pill {
+      font-size:11px; padding:4px 9px; border-radius:var(--r-pill); border:1px solid var(--line-2);
+      color:var(--muted); display:inline-flex; gap:6px; align-items:center; white-space:nowrap;
+      background:var(--surface);
+    }
+    .pill .d { width:7px; height:7px; border-radius:50%; background:var(--faint); flex:none; }
+    .pill.ok    { color:var(--ok);   border-color:rgba(52,211,153,.4);  } .pill.ok .d   { background:var(--ok); }
+    .pill.warn  { color:var(--warn); border-color:rgba(251,191,36,.4);  } .pill.warn .d { background:var(--warn); }
+    .pill.bad   { color:var(--bad);  border-color:rgba(248,113,113,.4); } .pill.bad .d  { background:var(--bad); }
+    .pill.off   { color:var(--faint); } .pill.off .d { background:var(--faint); }
+
+    .status-led { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); }
+    .status-led .d { width:9px; height:9px; border-radius:50%; background:var(--faint); flex:none; }
+    .status-led.up   .d { background:var(--ok);  animation:pulse 2.6s infinite; }
+    .status-led.warn .d { background:var(--warn); }
+    .status-led.down .d { background:var(--bad); }
+    @keyframes pulse {
+      0%{box-shadow:0 0 0 0 rgba(52,211,153,.5);} 70%{box-shadow:0 0 0 7px rgba(52,211,153,0);}
+      100%{box-shadow:0 0 0 0 rgba(52,211,153,0);}
+    }
+
+    /* ---- Layout --------------------------------------------------------------- */
+    main { max-width:1240px; margin:0 auto; padding:22px; display:grid; gap:18px; }
+    .panel {
+      background:var(--surface); border:1px solid var(--line); border-radius:var(--r-surface);
+      padding:20px; box-shadow:var(--shadow);
+      animation:rise .5s both;
+    }
+    main > .panel:nth-child(2){ animation-delay:.04s; }
+    main > .panel:nth-child(3){ animation-delay:.08s; }
+    main > .panel:nth-child(4){ animation-delay:.12s; }
+    main > .panel:nth-child(5){ animation-delay:.16s; }
+    @keyframes rise { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;} }
+
+    .panel-head { display:flex; align-items:flex-start; gap:12px; margin-bottom:16px; }
+    .panel-head .t { min-width:0; }
+    .panel-head h2 { margin:0; font-size:15px; font-weight:650; display:flex; align-items:center; gap:8px; }
+    .panel-head p { margin:5px 0 0; font-size:12.5px; color:var(--muted); max-width:78ch; }
+    .panel-head .actions { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .tag {
+      font-size:10px; color:var(--faint); border:1px solid var(--line-2); border-radius:6px;
+      padding:2px 7px; font-weight:600; letter-spacing:.3px; white-space:nowrap;
+    }
+    .ico-btn { color:var(--muted); display:inline-flex; }
+    .ico-btn svg { width:18px; height:18px; }
+
+    /* ---- Forms / controls ----------------------------------------------------- */
+    label { display:block; font-size:11.5px; color:var(--muted); margin-bottom:6px; font-weight:550; }
+    input, textarea, select {
+      width:100%; padding:9px 11px; background:var(--bg); border:1px solid var(--line-2);
+      border-radius:var(--r-control); color:var(--fg); font:inherit; outline:none;
+      transition:border-color .15s, box-shadow .15s;
+    }
+    input::placeholder, textarea::placeholder { color:var(--faint); }
+    input:focus, textarea:focus, select:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-weak); }
+    textarea { resize:vertical; min-height:60px; font-family:var(--mono); font-size:12.5px; line-height:1.5; }
+    select { appearance:none; cursor:pointer; }
+
+    .grid { display:grid; gap:12px; }
+    .conn-row { grid-template-columns:2fr 1.3fr 1fr auto; align-items:end; }
+    .form-row { grid-template-columns:1fr 2.4fr auto; align-items:end; }
+    @media (max-width:760px){ .conn-row, .form-row { grid-template-columns:1fr; } }
+
+    button {
+      font:inherit; padding:9px 15px; border-radius:var(--r-control); border:1px solid transparent;
+      background:var(--accent); color:var(--accent-ink); font-weight:650; cursor:pointer; white-space:nowrap;
+      display:inline-flex; align-items:center; gap:7px; transition:filter .15s, transform .05s, background .15s, border-color .15s;
+    }
+    button svg { width:16px; height:16px; }
+    button:hover { filter:brightness(1.07); }
+    button:active { transform:translateY(1px); }
+    button:disabled { opacity:.5; cursor:not-allowed; filter:none; }
+    button.ghost { background:transparent; color:var(--accent); border-color:var(--line-2); }
+    button.ghost:hover { border-color:var(--accent); background:var(--accent-weak); filter:none; }
+    button.subtle { background:var(--surface-3); color:var(--fg); border-color:var(--line-2); }
+    button.subtle:hover { border-color:var(--accent); filter:none; }
+    button.sm { padding:6px 11px; font-size:12.5px; }
+    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+    .switch { display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); cursor:pointer; user-select:none; }
+    .switch input { display:none; }
+    .switch .track { width:36px; height:20px; border-radius:var(--r-pill); background:var(--line-2); position:relative; transition:background .15s; flex:none; }
+    .switch .track::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--muted); transition:transform .15s, background .15s; }
+    .switch input:checked + .track { background:var(--accent-weak); }
+    .switch input:checked + .track::after { transform:translateX(16px); background:var(--accent); }
+
+    /* ---- KPI + charts --------------------------------------------------------- */
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:18px; }
+    .kpi { background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:15px 16px; }
+    .kpi .n { font-size:27px; font-weight:700; font-family:var(--mono); letter-spacing:-.5px; line-height:1.1; }
+    .kpi .l { font-size:12px; color:var(--muted); margin-top:4px; }
+    .kpi .sub { font-size:11px; color:var(--faint); margin-top:3px; }
+
+    .charts { display:grid; grid-template-columns:1.7fr 1fr; gap:14px; align-items:stretch; }
+    @media (max-width:860px){ .charts { grid-template-columns:1fr; } }
+    .card {
+      background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:16px;
+      display:flex; flex-direction:column; min-width:0;
+    }
+    .card h3 { margin:0 0 2px; font-size:12.5px; font-weight:600; color:var(--fg); }
+    .card .csub { margin:0 0 12px; font-size:11px; color:var(--faint); }
+    .card .grow { flex:1; min-height:0; display:flex; flex-direction:column; justify-content:center; }
+    svg.chart { width:100%; height:auto; display:block; overflow:visible; }
+    .axis { display:flex; justify-content:space-between; font-size:10.5px; color:var(--faint); font-family:var(--mono); margin-top:8px; }
+
+    .gauge-wrap { display:flex; align-items:center; gap:16px; }
+    .gauge { width:118px; height:118px; flex:none; }
+    .gauge .gtrack { stroke:var(--line-2); }
+    .gauge .gfill  { stroke:var(--accent); }
+    .gauge .gtext  { fill:var(--fg); font-family:var(--mono); font-weight:700; }
+    .gauge .gsub   { fill:var(--faint); font-family:var(--sans); }
+    .gauge-legend { font-size:12px; color:var(--muted); display:grid; gap:7px; }
+    .gauge-legend b { color:var(--fg); font-family:var(--mono); }
+
+    /* Stacked distribution bar */
+    .distbar { height:16px; border-radius:var(--r-pill); overflow:hidden; display:flex; background:var(--surface-3); border:1px solid var(--line); }
+    .distbar span { display:block; height:100%; min-width:0; transition:flex-grow .3s; }
+    .seg-anchored  { background:var(--ok); }
+    .seg-pending   { background:var(--warn); }
+    .seg-unbatched { background:var(--faint); }
+    .seg-failed    { background:var(--bad); }
+    .legend { display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin-top:14px; font-size:12px; }
+    .legend .row { display:flex; align-items:center; gap:8px; color:var(--muted); }
+    .legend .sw { width:9px; height:9px; border-radius:3px; flex:none; }
+    .legend b { margin-left:auto; color:var(--fg); font-family:var(--mono); }
+
+    /* ---- Pipeline ------------------------------------------------------------- */
+    .flow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:16px; }
+    .flow .step {
+      display:flex; align-items:center; gap:9px; background:var(--surface-2); border:1px solid var(--line);
+      border-radius:var(--r-control); padding:9px 13px; font-size:12.5px; color:var(--fg);
+    }
+    .flow .step svg { width:17px; height:17px; color:var(--accent); flex:none; }
+    .flow .arr { color:var(--faint); display:inline-flex; }
+    .flow .arr svg { width:16px; height:16px; }
+    .flow .note { color:var(--faint); font-size:11.5px; margin-left:auto; max-width:34ch; }
+
+    /* ---- Tables / log viewer -------------------------------------------------- */
+    .tablewrap { overflow:auto; border:1px solid var(--line); border-radius:12px; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
-    th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
-    th { color:var(--muted); font-weight:600; }
-    code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
-    .mono { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--muted); }
-    .badge { padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
-    .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); }
-    .badge.bad { background:rgba(239,68,68,.15); color:var(--bad); }
-    .badge.warn { background:rgba(245,158,11,.15); color:var(--warn); }
+    thead th {
+      position:sticky; top:0; background:var(--surface-2); z-index:1;
+      text-align:left; padding:10px 12px; color:var(--muted); font-weight:600; font-size:11px;
+      text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--line); white-space:nowrap;
+    }
+    tbody td { padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    tbody tr:last-child td { border-bottom:0; }
+    tbody tr.summary { cursor:pointer; }
+    tbody tr.summary:hover { background:var(--surface-2); }
+    tbody tr.summary[aria-expanded="true"] { background:var(--surface-2); }
+    .chev { color:var(--faint); display:inline-flex; transition:transform .15s; }
+    tr.summary[aria-expanded="true"] .chev { transform:rotate(90deg); color:var(--accent); }
+    .colmsg { max-width:0; width:100%; } /* let message column absorb slack */
+    .msg { display:flex; align-items:center; gap:8px; min-width:0; }
+    .msg .txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--fg); }
+    .msg .txt.code { font-family:var(--mono); color:var(--muted); font-size:12px; }
+
+    tr.detail { display:none; }
+    tr.detail.open { display:table-row; }
+    tr.detail > td { background:var(--bg); padding:0; }
+    .detail-inner { padding:14px 16px 16px 40px; display:grid; gap:14px; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); }
+    @media (max-width:760px){ .detail-inner { grid-template-columns:1fr; } }
+    .meta { display:grid; gap:7px; align-content:start; font-size:12px; }
+    .meta .r { display:grid; grid-template-columns:120px 1fr; gap:10px; align-items:center; }
+    .meta .k { color:var(--muted); }
+    .meta .v { min-width:0; display:flex; align-items:center; gap:6px; }
+    .meta .v .ellip { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    pre.json {
+      margin:0; background:var(--surface); border:1px solid var(--line); border-radius:10px;
+      padding:12px 14px; overflow:auto; max-height:280px; font-family:var(--mono); font-size:12px; line-height:1.6;
+    }
+    .j-key{ color:var(--accent); } .j-str{ color:#86efac; } .j-num{ color:#fbbf24; } .j-bool{ color:#f0abfc; } .j-null{ color:var(--faint); }
+
+    code, .mono { font-family:var(--mono); font-size:12px; }
+    .mono.muted { color:var(--muted); }
+    .kv { display:inline-flex; align-items:center; gap:5px; min-width:0; }
+    .copy { cursor:pointer; border:0; background:transparent; color:var(--faint); padding:3px; border-radius:6px; display:inline-flex; }
+    .copy svg { width:13px; height:13px; }
+    .copy:hover { color:var(--accent); background:var(--accent-weak); }
+
+    /* ---- Badges --------------------------------------------------------------- */
+    .badge { padding:3px 9px; border-radius:var(--r-pill); font-size:11px; font-weight:600; display:inline-flex; gap:5px; align-items:center; white-space:nowrap; }
+    .badge::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+    .badge.ok   { background:var(--ok-weak);   color:var(--ok); }
+    .badge.warn { background:var(--warn-weak); color:var(--warn); }
+    .badge.bad  { background:var(--bad-weak);  color:var(--bad); }
+    .badge.info { background:var(--accent-weak); color:var(--accent); }
+    .badge.off  { background:var(--surface-3); color:var(--faint); }
+    .lvl { padding:2px 7px; border-radius:6px; font-size:10.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; flex:none; }
+    .lvl.error { background:var(--bad-weak); color:var(--bad); }
+    .lvl.warn  { background:var(--warn-weak); color:var(--warn); }
+    .lvl.info  { background:var(--accent-weak); color:var(--accent); }
+    .lvl.debug { background:var(--surface-3); color:var(--muted); }
+
+    .muted { color:var(--muted); } .faint { color:var(--faint); }
     .err { color:var(--bad); font-size:13px; }
-    .muted { color:var(--muted); }
+    .bars { width:64px; height:8px; background:var(--surface-3); border-radius:var(--r-pill); overflow:hidden; display:inline-block; vertical-align:middle; }
+    .bars > i { display:block; height:100%; background:var(--accent); border-radius:var(--r-pill); }
+
+    /* ---- Result panels -------------------------------------------------------- */
+    .result { margin-top:14px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:15px; display:none; }
+    .result.show { display:block; animation:rise .25s both; }
+    .result .head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .result .roots { margin-top:12px; display:grid; gap:8px; font-size:12.5px; }
+    .result .roots .r { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .result .roots .k { color:var(--muted); min-width:150px; }
+
+    /* ---- Skeletons ------------------------------------------------------------ */
+    .skel { background:linear-gradient(90deg,var(--surface-3) 25%,var(--surface-2) 37%,var(--surface-3) 63%);
+      background-size:400% 100%; animation:shimmer 1.3s infinite; border-radius:6px; height:12px; display:inline-block; }
+    @keyframes shimmer { 0%{background-position:100% 0;} 100%{background-position:-100% 0;} }
+
+    /* ---- Empty states --------------------------------------------------------- */
+    .empty { text-align:center; padding:30px 16px; color:var(--muted); }
+    .empty svg { width:30px; height:30px; color:var(--faint); margin-bottom:8px; }
+    .empty .h { font-size:13.5px; color:var(--fg); font-weight:600; }
+    .empty .p { font-size:12.5px; margin-top:3px; }
+
+    /* ---- Toasts --------------------------------------------------------------- */
+    #toasts { position:fixed; right:18px; bottom:18px; display:grid; gap:10px; z-index:60; max-width:380px; }
+    .toast {
+      background:var(--surface-2); border:1px solid var(--line); border-left:3px solid var(--accent);
+      border-radius:12px; padding:12px 14px; box-shadow:var(--shadow); font-size:13px; animation:slidein .2s ease;
+    }
+    .toast.ok  { border-left-color:var(--ok); } .toast.bad { border-left-color:var(--bad); }
+    .toast .t { font-weight:650; margin-bottom:2px; display:flex; align-items:center; gap:7px; }
+    .toast .t svg { width:15px; height:15px; }
+    @keyframes slidein { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;} }
+
+    footer { text-align:center; color:var(--faint); font-size:12px; padding:6px 0 28px; }
+
+    /* ---- Reduced motion ------------------------------------------------------- */
+    @media (prefers-reduced-motion:reduce) {
+      *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <span id="status-dot" class="dot"></span>
-    <h1>AeternisLog — Tamper-Evident Integrity Dashboard</h1>
-    <span id="status-text" class="muted" style="margin-left:auto"></span>
+    <div class="brand">
+      <div class="mark" aria-hidden="true">A</div>
+      <h1>AeternisLog<small>Tamper-evident integrity dashboard</small></h1>
+    </div>
+    <div class="spacer"></div>
+    <div class="health" id="health" aria-label="service health">
+      <span class="status-led" id="status-led" title="overall API status"><span class="d"></span><span id="status-text">offline</span></span>
+      <span class="pill off" data-svc="mongodb"><span class="d"></span>mongo</span>
+      <span class="pill off" data-svc="redis"><span class="d"></span>redis</span>
+      <span class="pill off" data-svc="fabric"><span class="d"></span>fabric</span>
+      <span class="pill off" data-svc="batch_processor"><span class="d"></span>batcher</span>
+    </div>
   </header>
 
   <main>
+    <!-- Connection ----------------------------------------------------------- -->
     <section class="panel">
-      <h2>Connection</h2>
-      <div class="row">
-        <div><label>API base URL</label><input id="base" placeholder="http://localhost:5001" /></div>
-        <div><label>API key (optional)</label><input id="key" placeholder="X-API-Key" /></div>
-        <div><label>Records domain</label><input id="domain" placeholder="audit" /></div>
-        <div><button id="connect">Connect</button></div>
+      <div class="panel-head">
+        <div class="t">
+          <h2>Connection</h2>
+          <p>Point the dashboard at your API. Settings are kept in this browser only.</p>
+        </div>
+        <div class="actions">
+          <span class="tag" id="last-updated">not connected</span>
+        </div>
       </div>
-      <p id="conn-err" class="err"></p>
-    </section>
-
-    <section class="panel">
-      <h2>Sync status</h2>
-      <div id="stats" class="stats"><span class="muted">Connect to load stats…</span></div>
-    </section>
-
-    <section class="panel">
-      <h2>Log batches</h2>
-      <p class="muted">Anchored Merkle batches from the <code>logs</code> domain. Click verify to recompute
-        and compare against the anchored root.</p>
-      <table>
-        <thead><tr><th>Batch ID</th><th>Merkle root</th><th>#</th><th>Synced</th><th>Integrity</th></tr></thead>
-        <tbody id="batches"><tr><td colspan="5" class="muted">—</td></tr></tbody>
-      </table>
-    </section>
-
-    <section class="panel">
-      <h2>Verify a record batch</h2>
-      <p class="muted">Recompute a domain batch's Merkle root server-side and compare with the anchored one.</p>
-      <div class="row">
-        <div><label>Batch ID</label><input id="rec-batch" placeholder="audit-…" /></div>
-        <div></div><div></div>
-        <div><button id="verify-rec" class="ghost">Verify</button></div>
+      <div class="grid conn-row">
+        <div><label for="base">API base URL</label><input id="base" placeholder="http://localhost:5001" /></div>
+        <div><label for="key">API key (optional)</label><input id="key" type="password" placeholder="X-API-Key" /></div>
+        <div><label for="domain">Records domain</label><input id="domain" placeholder="audit" /></div>
+        <div class="toolbar">
+          <button id="connect" data-icon-slot="connect">Connect</button>
+          <button class="subtle sm" id="refresh" title="Refresh now" aria-label="Refresh now" data-icon-slot="refresh"></button>
+          <label class="switch" title="Refresh health, overview and batches every 10s">
+            <input type="checkbox" id="auto" /><span class="track"></span>auto
+          </label>
+        </div>
       </div>
-      <p id="rec-result"></p>
+      <p id="conn-err" class="err" role="alert"></p>
     </section>
+
+    <!-- Overview ------------------------------------------------------------- -->
+    <section class="panel">
+      <div class="panel-head">
+        <div class="t">
+          <h2>Overview <span class="tag" id="ov-domain">domain</span></h2>
+          <p>Integrity coverage and anchoring activity, derived from the domain audit report.</p>
+        </div>
+      </div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="charts">
+        <div class="card">
+          <h3>Anchoring activity</h3>
+          <p class="csub">Records anchored per period, from each batch's on-chain timestamp.</p>
+          <div class="grow" id="activity-chart"></div>
+        </div>
+        <div class="card">
+          <h3>Integrity coverage</h3>
+          <p class="csub">Share of records covered by an on-chain Merkle proof.</p>
+          <div class="grow" id="coverage-chart"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h3>Anchor status <span class="faint" style="font-weight:400">(records in view)</span></h3>
+        <p class="csub">How the records currently loaded below are distributed across the anchor lifecycle.</p>
+        <div class="grow" id="status-chart"></div>
+      </div>
+
+      <div class="flow" id="pipeline"></div>
+    </section>
+
+    <!-- Records (log viewer) ------------------------------------------------- -->
+    <section class="panel">
+      <div class="panel-head">
+        <div class="t">
+          <h2>Records</h2>
+          <p>Append-only records for this domain. Expand any row to read its full payload and integrity proof. Create one, then anchor the pending pool into a Merkle batch.</p>
+        </div>
+        <div class="actions">
+          <button id="anchor-btn" data-icon-slot="anchor">Anchor pending records</button>
+        </div>
+      </div>
+
+      <div class="grid form-row">
+        <div><label for="rec-source">Source</label><input id="rec-source" placeholder="crm" /></div>
+        <div><label for="rec-payload">Payload (JSON)</label><textarea id="rec-payload" placeholder='{"level":"info","message":"order placed","amount":100}'></textarea></div>
+        <div class="toolbar"><button class="subtle" id="create-rec" data-icon-slot="plus">Create record</button></div>
+      </div>
+
+      <div class="toolbar" style="margin:16px 0 12px">
+        <div style="position:relative; flex:1; min-width:180px; max-width:280px">
+          <span id="search-ico" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--faint); display:inline-flex"></span>
+          <input id="rec-search" style="padding-left:32px" placeholder="filter loaded records…" aria-label="filter loaded records" />
+        </div>
+        <select id="rec-level" aria-label="filter by level" style="width:auto; min-width:120px; display:none"></select>
+        <input id="rec-source-q" style="width:auto; max-width:170px" placeholder="source (server-side)" aria-label="filter by source on the server" />
+        <button class="ghost sm" id="reload-rec" data-icon-slot="reload">Reload</button>
+        <span class="spacer" style="margin-left:auto"></span>
+        <span class="faint" id="rec-count" style="font-size:12px"></span>
+      </div>
+
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th style="width:30px"></th><th>Time</th><th>Source</th><th>Message</th><th>Status</th><th>Hash</th>
+          </tr></thead>
+          <tbody id="records"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Anchored batches ----------------------------------------------------- -->
+    <section class="panel">
+      <div class="panel-head">
+        <div class="t">
+          <h2>Anchored batches</h2>
+          <p>Each batch's Merkle root is anchored on Hyperledger Fabric. <b>Verify</b> recomputes the root server-side and compares it to the chain; <b>Public</b> is the unauthenticated proof an external auditor would use.</p>
+        </div>
+        <div class="actions">
+          <a id="pdf-link" class="ghost sm" style="padding:6px 11px; border:1px solid var(--line-2); border-radius:var(--r-control)" target="_blank" rel="noopener" data-icon-slot="pdf">Audit report (PDF)</a>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th>Batch ID</th><th>Merkle root</th><th>Records</th><th>Tx</th><th>Anchored</th><th style="text-align:right">Verify</th>
+          </tr></thead>
+          <tbody id="batches"></tbody>
+        </table>
+      </div>
+      <div id="verify-result" class="result" role="status"></div>
+    </section>
+
+    <!-- Public verification -------------------------------------------------- -->
+    <section class="panel">
+      <div class="panel-head">
+        <div class="t">
+          <h2>Public verification <span class="tag">no auth</span></h2>
+          <p>Prove a batch is anchored without an API key, and optionally check that a Merkle root you hold matches the anchored one. This is the trustless path for third parties.</p>
+        </div>
+      </div>
+      <div class="grid" style="grid-template-columns:1.4fr 1.4fr auto; align-items:end">
+        <div><label for="pub-batch">Batch ID</label><input id="pub-batch" placeholder="audit-…" /></div>
+        <div><label for="pub-root">Merkle root to check (optional)</label><input id="pub-root" placeholder="sha-256 hex…" /></div>
+        <div><button class="ghost" id="pub-verify" data-icon-slot="shield">Verify anchor</button></div>
+      </div>
+      <div id="pub-result" class="result" role="status"></div>
+    </section>
+
+    <footer>AeternisLog example dashboard. Talks only to the public and records API.</footer>
   </main>
 
+  <div id="toasts" aria-live="polite" aria-atomic="false"></div>
+
   <script>
+    "use strict";
+
+    /* ---- Tiny helpers ------------------------------------------------------- */
     const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    const escAttr = esc;
+    const truncate = (s, n) => (s && s.length > n ? s.slice(0, n) + "…" : (s ?? ""));
+    const num = (n) => (n == null || n === "" || Number.isNaN(Number(n))) ? "-" : Number(n).toLocaleString();
+
+    /* ---- Icon set (inline SVG, one family, stroke 1.75) --------------------- */
+    const ICONS = {
+      refresh:'<path d="M3 11a9 9 0 0 1 15-6.7L21 7"/><path d="M21 3v4h-4"/><path d="M21 13a9 9 0 0 1-15 6.7L3 17"/><path d="M3 21v-4h4"/>',
+      reload:'<path d="M3 11a9 9 0 0 1 15-6.7L21 7"/><path d="M21 3v4h-4"/><path d="M21 13a9 9 0 0 1-15 6.7L3 17"/><path d="M3 21v-4h4"/>',
+      anchor:'<circle cx="12" cy="5" r="2.5"/><path d="M12 7.5V21"/><path d="M5 13a7 7 0 0 0 14 0"/><path d="M3 13h2M19 13h2"/>',
+      plus:'<path d="M12 5v14M5 12h14"/>',
+      copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+      search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+      chevron:'<path d="m9 6 6 6-6 6"/>',
+      shield:'<path d="M12 3 5 6v6c0 4 3 6.5 7 9 4-2.5 7-5 7-9V6z"/><path d="m9.5 12 1.8 1.8 3.5-3.6"/>',
+      download:'<path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/>',
+      database:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>',
+      record:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+      layers:'<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
+      link:'<path d="M9 15 15 9"/><path d="M11 6.5 13 4.5a4 4 0 0 1 6 6l-2 2"/><path d="M13 17.5 11 19.5a4 4 0 0 1-6-6l2-2"/>',
+      arrow:'<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
+      inbox:'<path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 6h14l2 6v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6z"/>',
+      check:'<path d="m5 12 5 5L20 7"/>',
+    };
+    function icon(name, cls) {
+      const p = ICONS[name] || "";
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"${cls?` class="${cls}"`:""} aria-hidden="true">${p}</svg>`;
+    }
+    function copyBtn(text) {
+      return `<button class="copy" title="Copy" aria-label="Copy" data-copy="${escAttr(String(text ?? ""))}">${icon("copy")}</button>`;
+    }
+
+    function relTime(iso) {
+      const t = Date.parse(iso); if (isNaN(t)) return esc(iso || "-");
+      const s = Math.round((Date.now() - t) / 1000);
+      if (s < 5) return "just now";
+      if (s < 60) return s + "s ago";
+      if (s < 3600) return Math.round(s / 60) + "m ago";
+      if (s < 86400) return Math.round(s / 3600) + "h ago";
+      return Math.round(s / 86400) + "d ago";
+    }
+    function absTime(t) {
+      const d = (typeof t === "number") ? new Date(t) : new Date(Date.parse(t));
+      if (isNaN(d.getTime())) return esc(String(t || "-"));
+      return d.toLocaleString(undefined, { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+    }
+
+    function toast(title, msg, kind = "") {
+      const el = document.createElement("div");
+      el.className = "toast " + kind;
+      const ic = kind === "ok" ? icon("check") : kind === "bad" ? "" : "";
+      el.innerHTML = `<div class="t">${ic}${esc(title)}</div><div class="muted">${esc(msg)}</div>`;
+      $("toasts").appendChild(el);
+      setTimeout(() => { el.style.opacity = "0"; el.style.transition = "opacity .3s"; setTimeout(() => el.remove(), 300); }, 4200);
+    }
+
+    /* ---- Persisted connection settings -------------------------------------- */
     const store = {
       get base()   { return localStorage.getItem("aeternislog.base")   || "http://localhost:5001"; },
       get key()    { return localStorage.getItem("aeternislog.key")    || ""; },
       get domain() { return localStorage.getItem("aeternislog.domain") || "audit"; },
-      save(b, k, d) {
-        localStorage.setItem("aeternislog.base", b);
-        localStorage.setItem("aeternislog.key", k);
-        localStorage.setItem("aeternislog.domain", d);
+      save() {
+        localStorage.setItem("aeternislog.base", $("base").value.trim());
+        localStorage.setItem("aeternislog.key", $("key").value.trim());
+        localStorage.setItem("aeternislog.domain", $("domain").value.trim());
       },
     };
-
-    function headers() {
-      const h = { "Content-Type": "application/json" };
+    const base = () => $("base").value.trim().replace(/\/+$/, "");
+    const domain = () => $("domain").value.trim() || "audit";
+    function headers(json) {
+      const h = {};
+      if (json) h["Content-Type"] = "application/json";
       const k = $("key").value.trim();
       if (k) h["X-API-Key"] = k;
       return h;
     }
-    function api(path) { return $("base").value.trim().replace(/\/$/, "") + path; }
-
-    async function req(method, path) {
-      const res = await fetch(api(path), { method, headers: headers() });
+    async function req(method, path, body) {
+      const res = await fetch(base() + path, {
+        method, headers: headers(!!body), body: body ? JSON.stringify(body) : undefined,
+      });
       const text = await res.text();
-      let body; try { body = JSON.parse(text); } catch { body = text; }
-      return { ok: res.ok, status: res.status, body };
+      let data; try { data = JSON.parse(text); } catch { data = text; }
+      return { ok: res.ok, status: res.status, data };
     }
 
-    function badge(text, kind) { return `<span class="badge ${kind}">${text}</span>`; }
-    function short(s, n = 16) { return s && s.length > n ? s.slice(0, n) + "…" : (s || "—"); }
+    /* ---- Shared status/level mapping ---------------------------------------- */
+    // Health states are richer than up/down: "disabled" and "not configured" are
+    // valid non-error states and must not read as failures.
+    function svcClass(v) {
+      const s = String(v || "").toLowerCase();
+      if (s === "healthy" || s === "running") return "ok";
+      if (s.startsWith("unhealthy")) return "bad";
+      if (s === "stopped") return "warn";
+      if (s === "disabled" || s === "not configured" || s === "") return "off";
+      return "off";
+    }
+    function recAnchorState(r) {
+      const s = String(r.anchor_status || "").toLowerCase();
+      if (s === "anchored") return "anchored";
+      if (s === "failed") return "failed";
+      if (s === "pending") return "pending";
+      return "unbatched"; // empty: created but never claimed into a batch
+    }
+    function statusBadge(state) {
+      const map = {
+        anchored:["anchored","ok"], pending:["pending","warn"],
+        failed:["failed","bad"], unbatched:["unbatched","off"],
+      };
+      const [t, k] = map[state] || ["unknown", "off"];
+      return `<span class="badge ${k}">${t}</span>`;
+    }
+    // Honest progressive enhancement: surface a level only when the payload has one.
+    function levelOf(payload) {
+      if (!payload || typeof payload !== "object") return null;
+      const raw = payload.level ?? payload.severity ?? payload.lvl ?? payload.log_level;
+      if (raw == null) return null;
+      const s = String(raw).toLowerCase();
+      if (["error","err","fatal","critical","crit"].includes(s)) return "error";
+      if (["warn","warning"].includes(s)) return "warn";
+      if (["info","information","notice"].includes(s)) return "info";
+      if (["debug","trace","verbose"].includes(s)) return "debug";
+      return "info";
+    }
+    function messageOf(payload) {
+      if (!payload || typeof payload !== "object") return { text: String(payload ?? ""), code: true };
+      const m = payload.message ?? payload.msg ?? payload.event ?? payload.action ?? payload.description;
+      if (m != null && typeof m !== "object") return { text: String(m), code: false };
+      return { text: JSON.stringify(payload), code: true };
+    }
 
+    /* ---- JSON pretty printer with syntax highlighting ----------------------- */
+    function highlightJSON(value) {
+      let raw;
+      try { raw = JSON.stringify(value, null, 2); } catch { raw = String(value); }
+      if (raw === undefined) raw = "null";
+      // Escape only &<> so the quote tokens survive for the tokenizer (no XSS).
+      const safe = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      return safe.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+        (m) => {
+          let cls = "j-num";
+          if (/^"/.test(m)) cls = /:$/.test(m) ? "j-key" : "j-str";
+          else if (/true|false/.test(m)) cls = "j-bool";
+          else if (/null/.test(m)) cls = "j-null";
+          return `<span class="${cls}">${m}</span>`;
+        }
+      );
+    }
+
+    /* ---- App state ---------------------------------------------------------- */
+    const state = { records: [], report: null };
+
+    /* ---- Health ------------------------------------------------------------- */
     async function loadHealth() {
       try {
         const r = await req("GET", "/health");
-        const up = r.ok && r.body && r.body.services && r.body.services.fabric === "healthy";
-        $("status-dot").className = "dot " + (r.ok ? "up" : "down");
-        $("status-text").textContent = r.ok
-          ? `healthy · fabric ${r.body.services.fabric} · mongo ${r.body.services.mongodb}`
-          : `unreachable (${r.status})`;
-      } catch (e) {
-        $("status-dot").className = "dot down";
-        $("status-text").textContent = "unreachable";
+        const svc = (r.data && r.data.services) || {};
+        const overall = (r.data && r.data.status) || (r.ok ? "healthy" : "down");
+        const led = $("status-led");
+        led.className = "status-led " + (overall === "healthy" ? "up" : overall === "degraded" ? "warn" : "down");
+        $("status-text").textContent = r.ok ? overall : "offline";
+        document.querySelectorAll(".pill[data-svc]").forEach((c) => {
+          c.className = "pill " + svcClass(svc[c.dataset.svc]);
+        });
+      } catch {
+        $("status-led").className = "status-led down";
+        $("status-text").textContent = "offline";
+        document.querySelectorAll(".pill[data-svc]").forEach((c) => (c.className = "pill bad"));
       }
     }
-
-    async function loadStats() {
-      const el = $("stats");
+    async function healthCount() {
       try {
-        const r = await req("GET", "/stats/sync");
-        if (!r.ok) { el.innerHTML = `<span class="err">stats error ${r.status}</span>`; return; }
-        const s = r.body || {};
-        const cells = Object.entries(flatten(s)).slice(0, 8)
-          .map(([k, v]) => `<div class="stat"><div class="n">${v}</div><div class="l">${k}</div></div>`);
-        el.innerHTML = cells.join("") || '<span class="muted">no stats</span>';
-      } catch (e) { el.innerHTML = `<span class="err">${e.message}</span>`; }
+        const r = await req("GET", "/health");
+        const svc = (r.data && r.data.services) || {};
+        const names = Object.keys(svc);
+        const up = names.filter((k) => svcClass(svc[k]) === "ok").length;
+        return { up, total: names.length || 4 };
+      } catch { return { up: 0, total: 4 }; }
     }
 
-    function flatten(obj, prefix = "") {
-      const out = {};
-      for (const [k, v] of Object.entries(obj || {})) {
-        const key = prefix ? `${prefix}.${k}` : k;
-        if (v && typeof v === "object" && !Array.isArray(v)) Object.assign(out, flatten(v, key));
-        else out[key] = Array.isArray(v) ? v.length : v;
+    /* ---- Overview: KPIs + charts (from /report) ----------------------------- */
+    async function loadOverview() {
+      $("ov-domain").textContent = domain();
+      try {
+        const r = await req("GET", `/api/v1/${encodeURIComponent(domain())}/report`);
+        if (!r.ok) { renderKpis(null); renderActivity(null); renderCoverage(null); return; }
+        state.report = r.data || {};
+        const svc = await healthCount();
+        renderKpis(state.report, svc);
+        renderActivity(state.report);
+        renderCoverage(state.report);
+      } catch (e) {
+        $("conn-err").textContent = e.message;
       }
-      return out;
     }
 
+    function renderKpis(d, svc) {
+      const el = $("kpis");
+      if (!d) {
+        el.innerHTML = Array.from({ length: 4 }, () =>
+          `<div class="kpi"><div class="n"><span class="skel" style="width:54px;height:22px"></span></div><div class="l"><span class="skel" style="width:80px"></span></div></div>`
+        ).join("");
+        return;
+      }
+      const batches = d.batches || [];
+      const anchoredRecords = batches.reduce((a, b) => a + (Number(b.num_records) || 0), 0);
+      const total = Number(d.total_records) || 0;
+      const cov = total > 0 ? Math.round((anchoredRecords / total) * 100) : 0;
+      const kpi = (n, l, sub) => `<div class="kpi"><div class="n">${esc(n)}</div><div class="l">${esc(l)}</div><div class="sub">${esc(sub)}</div></div>`;
+      el.innerHTML = [
+        kpi(num(d.total_records ?? 0), "records", "in this domain"),
+        kpi(num(d.total_batches ?? batches.length), "anchored batches", "Merkle roots on chain"),
+        kpi(num(anchoredRecords), "anchored records", `${cov}% of all records`),
+        kpi(svc ? `${svc.up}/${svc.total}` : "-", "services healthy", "live dependencies"),
+      ].join("");
+    }
+
+    function renderCoverage(d) {
+      const el = $("coverage-chart");
+      if (!d) { el.innerHTML = chartSkeleton(); return; }
+      const batches = d.batches || [];
+      const anchored = batches.reduce((a, b) => a + (Number(b.num_records) || 0), 0);
+      const total = Number(d.total_records) || 0;
+      const pct = total > 0 ? Math.min(100, Math.round((anchored / total) * 100)) : 0;
+      const pending = Math.max(0, total - anchored);
+      const r = 42, c = 2 * Math.PI * r, off = c * (1 - pct / 100);
+      el.innerHTML = `
+        <div class="gauge-wrap">
+          <svg class="gauge" viewBox="0 0 100 100" role="img" aria-label="${pct}% of records anchored">
+            <circle class="gtrack" cx="50" cy="50" r="${r}" fill="none" stroke-width="9"/>
+            <circle class="gfill" cx="50" cy="50" r="${r}" fill="none" stroke-width="9" stroke-linecap="round"
+              stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 50 50)"/>
+            <text class="gtext" x="50" y="49" text-anchor="middle" font-size="22">${pct}%</text>
+            <text class="gsub" x="50" y="63" text-anchor="middle" font-size="8">covered</text>
+          </svg>
+          <div class="gauge-legend">
+            <div><b>${num(anchored)}</b> records anchored</div>
+            <div><b>${num(pending)}</b> awaiting an anchor</div>
+            <div class="faint">${num(total)} records total</div>
+          </div>
+        </div>`;
+    }
+
+    function renderActivity(d) {
+      const el = $("activity-chart");
+      if (!d) { el.innerHTML = chartSkeleton(); return; }
+      const pts = (d.batches || [])
+        .map((b) => ({ t: Date.parse(b.batched_at), recs: Number(b.num_records) || 0 }))
+        .filter((p) => !isNaN(p.t))
+        .sort((a, b) => a.t - b.t);
+      if (!pts.length) {
+        el.innerHTML = emptyState("layers", "No anchored batches yet", "Anchor a pending pool to see activity here.");
+        return;
+      }
+      const n = Math.min(12, Math.max(pts.length, 1));
+      const min = pts[0].t, max = pts[pts.length - 1].t, span = Math.max(max - min, 1);
+      const buckets = Array.from({ length: n }, () => 0);
+      for (const p of pts) {
+        let i = Math.floor(((p.t - min) / span) * n);
+        if (i >= n) i = n - 1; if (i < 0) i = 0;
+        buckets[i] += p.recs;
+      }
+      const maxV = Math.max(1, ...buckets);
+      const W = 320, H = 116, padX = 6, padTop = 12, padBot = 6;
+      const slot = (W - padX * 2) / n, bw = Math.min(28, slot * 0.62);
+      let bars = "";
+      buckets.forEach((v, i) => {
+        const h = (v / maxV) * (H - padTop - padBot);
+        const x = padX + i * slot + (slot - bw) / 2;
+        const y = H - padBot - h;
+        bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(h,1).toFixed(1)}" rx="2" fill="var(--accent)" opacity="${v ? 0.92 : 0.18}"><title>${v} records</title></rect>`;
+      });
+      el.innerHTML = `
+        <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="anchored records over time">
+          <line x1="${padX}" y1="${H - padBot}" x2="${W - padX}" y2="${H - padBot}" stroke="var(--line-2)" stroke-width="1"/>
+          ${bars}
+        </svg>
+        <div class="axis"><span>${absTime(min)}</span><span>peak ${maxV}/period</span><span>${absTime(max)}</span></div>`;
+    }
+
+    function chartSkeleton() {
+      return `<div style="display:flex;gap:6px;align-items:flex-end;height:116px;padding:8px 0">${
+        [40,70,30,90,55,75,45,85].map((h)=>`<span class="skel" style="width:14px;height:${h}%;border-radius:3px"></span>`).join("")
+      }</div>`;
+    }
+    function emptyState(ic, h, p) {
+      return `<div class="empty">${icon(ic)}<div class="h">${esc(h)}</div><div class="p">${esc(p)}</div></div>`;
+    }
+
+    /* ---- Anchor-status distribution (from loaded records) ------------------- */
+    function renderStatusDist() {
+      const el = $("status-chart");
+      const recs = state.records || [];
+      if (!recs.length) { el.innerHTML = emptyState("inbox", "No records loaded", "Connect and load records to see the distribution."); return; }
+      const c = { anchored: 0, pending: 0, unbatched: 0, failed: 0 };
+      for (const r of recs) c[recAnchorState(r)]++;
+      const total = recs.length;
+      const seg = (k) => c[k] ? `<span class="seg-${k}" style="flex-grow:${c[k]}" title="${k}: ${c[k]}"></span>` : "";
+      const order = ["anchored", "pending", "unbatched", "failed"];
+      const colors = { anchored:"var(--ok)", pending:"var(--warn)", unbatched:"var(--faint)", failed:"var(--bad)" };
+      const legend = order.map((k) =>
+        `<div class="row"><span class="sw" style="background:${colors[k]}"></span>${k}<b>${c[k]} <span class="faint">(${Math.round((c[k]/total)*100)}%)</span></b></div>`
+      ).join("");
+      el.innerHTML = `<div class="distbar">${order.map(seg).join("")}</div><div class="legend">${legend}</div>`;
+    }
+
+    /* ---- Pipeline (static explainer, real steps) --------------------------- */
+    function renderPipeline() {
+      const steps = [
+        ["record", "Record"], ["database", "MongoDB"], ["layers", "Merkle batch"], ["link", "Anchored on Fabric"],
+      ];
+      const arrow = `<span class="arr">${icon("arrow")}</span>`;
+      $("pipeline").innerHTML =
+        steps.map(([i, t]) => `<span class="step">${icon(i)}${esc(t)}</span>`).join(arrow) +
+        `<span class="note">Tamper is detected by recomputing the root and comparing it to the chain.</span>`;
+    }
+
+    /* ---- Records (log viewer) ----------------------------------------------- */
+    function recordMatchesSearch(r, q) {
+      if (!q) return true;
+      const hay = (r.id + " " + r.source + " " + r.hash + " " + JSON.stringify(r.payload || {})).toLowerCase();
+      return hay.includes(q);
+    }
+
+    function renderRecords() {
+      const tb = $("records");
+      const q = $("rec-search").value.trim().toLowerCase();
+      const lvl = $("rec-level").value;
+      let recs = state.records || [];
+      const view = recs.filter((r) =>
+        recordMatchesSearch(r, q) && (!lvl || levelOf(r.payload) === lvl)
+      );
+
+      $("rec-count").textContent = recs.length ? `${view.length} of ${recs.length} loaded` : "";
+
+      // Populate the level filter only when the loaded set actually has levels.
+      syncLevelFilter(recs);
+
+      if (!recs.length) {
+        tb.innerHTML = `<tr><td colspan="6">${emptyState("inbox", "No records yet", "Create one above, then anchor the pending pool.")}</td></tr>`;
+        renderStatusDist();
+        return;
+      }
+      if (!view.length) {
+        tb.innerHTML = `<tr><td colspan="6">${emptyState("search", "No matches", "No loaded record matches your filter.")}</td></tr>`;
+        return;
+      }
+
+      tb.innerHTML = view.map((r, idx) => {
+        const state2 = recAnchorState(r);
+        const lv = levelOf(r.payload);
+        const m = messageOf(r.payload);
+        const rid = "rec-" + idx;
+        const lvTag = lv ? `<span class="lvl ${lv}">${lv}</span>` : "";
+        const summary = `<tr class="summary" data-toggle="${rid}" tabindex="0" role="button" aria-expanded="false">
+          <td><span class="chev">${icon("chevron")}</span></td>
+          <td class="faint" title="${escAttr(absTime(r.created_at))}">${relTime(r.created_at)}</td>
+          <td>${esc(r.source || "-")}</td>
+          <td class="colmsg"><div class="msg">${lvTag}<span class="txt ${m.code ? "code" : ""}">${esc(truncate(m.text, 80))}</span></div></td>
+          <td>${statusBadge(state2)}</td>
+          <td><span class="kv mono muted">${esc(truncate(r.hash, 12))}${copyBtn(r.hash)}</span></td>
+        </tr>`;
+        const detail = `<tr class="detail" id="${rid}"><td colspan="6"><div class="detail-inner">
+          <div class="meta">
+            ${metaRow("Record ID", r.id, true)}
+            ${metaRow("Integrity hash", r.hash, true)}
+            ${metaRow("Created", absTime(r.created_at), false)}
+            ${metaRow("Anchor status", null, false, statusBadge(state2))}
+            ${r.batch_id ? metaRow("Batch ID", r.batch_id, true) : ""}
+            ${r.merkle_root ? metaRow("Merkle root", r.merkle_root, true) : ""}
+            ${r.tx_id ? metaRow("Fabric tx", r.tx_id, true) : ""}
+            ${r.batch_id ? `<div class="r"><span class="k"></span><span class="v"><button class="ghost sm" data-verify="${escAttr(r.batch_id)}">${icon("shield")}Verify this batch</button></span></div>` : ""}
+          </div>
+          <div><div class="csub" style="margin-bottom:6px">Payload</div><pre class="json">${highlightJSON(r.payload)}</pre></div>
+        </div></td></tr>`;
+        return summary + detail;
+      }).join("");
+
+      renderStatusDist();
+    }
+    function metaRow(k, value, copyable, customHtml) {
+      const v = customHtml != null
+        ? customHtml
+        : `<span class="ellip mono">${esc(value || "-")}</span>${copyable && value ? copyBtn(value) : ""}`;
+      return `<div class="r"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`;
+    }
+    function syncLevelFilter(recs) {
+      const sel = $("rec-level");
+      const levels = [...new Set(recs.map((r) => levelOf(r.payload)).filter(Boolean))];
+      if (!levels.length) { sel.style.display = "none"; sel.innerHTML = ""; return; }
+      const order = ["error", "warn", "info", "debug"].filter((l) => levels.includes(l));
+      const prev = sel.value;
+      sel.style.display = "";
+      sel.innerHTML = `<option value="">all levels</option>` + order.map((l) => `<option value="${l}">${l}</option>`).join("");
+      if (order.includes(prev)) sel.value = prev;
+    }
+
+    async function loadRecords() {
+      const tb = $("records");
+      tb.setAttribute("aria-busy", "true");
+      tb.innerHTML = Array.from({ length: 4 }, () =>
+        `<tr><td></td><td><span class="skel" style="width:60px"></span></td><td><span class="skel" style="width:50px"></span></td><td><span class="skel" style="width:60%"></span></td><td><span class="skel" style="width:70px"></span></td><td><span class="skel" style="width:90px"></span></td></tr>`
+      ).join("");
+      const src = $("rec-source-q").value.trim();
+      const qs = new URLSearchParams({ limit: "100" });
+      if (src) qs.set("source", src);
+      try {
+        const r = await req("GET", `/api/v1/${encodeURIComponent(domain())}/records?${qs}`);
+        if (!r.ok) { tb.innerHTML = `<tr><td colspan="6"><div class="err" style="padding:16px">Failed to load records (HTTP ${r.status}).</div></td></tr>`; return; }
+        state.records = (r.data && r.data.records) || [];
+        renderRecords();
+      } catch (e) {
+        tb.innerHTML = `<tr><td colspan="6"><div class="err" style="padding:16px">${esc(e.message)}</div></td></tr>`;
+      } finally {
+        tb.removeAttribute("aria-busy");
+      }
+    }
+
+    async function createRecord() {
+      const source = $("rec-source").value.trim() || "demo";
+      let payload;
+      try { payload = JSON.parse($("rec-payload").value.trim() || "{}"); }
+      catch { toast("Invalid payload", "Payload must be valid JSON.", "bad"); return; }
+      const btn = $("create-rec"); btn.disabled = true;
+      try {
+        const r = await req("POST", `/api/v1/${encodeURIComponent(domain())}/records`, { source, payload });
+        if (!r.ok) { toast("Create failed", (r.data && r.data.message) || `HTTP ${r.status}`, "bad"); return; }
+        const id = r.data && r.data.data && r.data.data.id;
+        toast("Record created", `${truncate(id, 14)} - pending anchor`, "ok");
+        $("rec-payload").value = "";
+        await Promise.all([loadRecords(), loadOverview()]);
+      } finally { btn.disabled = false; }
+    }
+
+    async function anchorPending() {
+      const btn = $("anchor-btn"); btn.disabled = true; const label = btn.innerHTML; btn.innerHTML = icon("anchor") + "Anchoring…";
+      try {
+        const r = await req("POST", `/api/v1/${encodeURIComponent(domain())}/records/batch`);
+        if (!r.ok) { toast("Anchor failed", (r.data && r.data.message) || `HTTP ${r.status}`, "bad"); return; }
+        const d = r.data || {};
+        if (!d.batch_id || d.num_records === 0) {
+          toast("Nothing to anchor", "No pending records in this domain.", "");
+        } else {
+          toast("Batch anchored", `${truncate(d.batch_id, 22)} - ${d.num_records} records`, "ok");
+        }
+        await Promise.all([loadRecords(), loadOverview(), loadBatches()]);
+      } finally { btn.disabled = false; btn.innerHTML = label; }
+    }
+
+    /* ---- Batches (from /report) -------------------------------------------- */
     async function loadBatches() {
       const tb = $("batches");
-      const r = await req("GET", "/merkle/batches");
-      if (!r.ok) { tb.innerHTML = `<tr><td colspan="5" class="err">error ${r.status}</td></tr>`; return; }
-      const batches = (r.body && r.body.batches) || [];
-      if (!batches.length) { tb.innerHTML = '<tr><td colspan="5" class="muted">no batches yet</td></tr>'; return; }
-      tb.innerHTML = batches.map((b) => {
-        const id = b.batch_id || b.batchId || "";
-        const synced = b.synced === false ? badge("pending", "warn") : badge("synced", "ok");
-        return `<tr>
-          <td><code>${short(id, 22)}</code></td>
-          <td class="mono">${short(b.merkle_root, 20)}</td>
-          <td>${b.num_logs ?? b.numLogs ?? "—"}</td>
-          <td>${synced}</td>
-          <td><button class="ghost" data-batch="${id}">verify</button> <span id="iv-${id}"></span></td>
-        </tr>`;
-      }).join("");
-      tb.querySelectorAll("button[data-batch]").forEach((btn) =>
-        btn.addEventListener("click", () => verifyLogBatch(btn.dataset.batch)));
+      tb.setAttribute("aria-busy", "true");
+      try {
+        const r = await req("GET", `/api/v1/${encodeURIComponent(domain())}/report`);
+        if (!r.ok) { tb.innerHTML = `<tr><td colspan="6"><div class="err" style="padding:16px">Failed to load batches (HTTP ${r.status}).</div></td></tr>`; return; }
+        const batches = (r.data && r.data.batches) || [];
+        if (!batches.length) {
+          tb.innerHTML = `<tr><td colspan="6">${emptyState("layers", "No anchored batches yet", "Anchor a pending pool to create the first one.")}</td></tr>`;
+          return;
+        }
+        const maxRecs = Math.max(1, ...batches.map((b) => Number(b.num_records) || 0));
+        tb.innerHTML = batches.map((b) => {
+          const n = Number(b.num_records) || 0;
+          const pct = Math.round((n / maxRecs) * 100);
+          return `<tr>
+            <td><span class="kv"><code>${esc(truncate(b.batch_id, 22))}</code>${copyBtn(b.batch_id)}</span></td>
+            <td><span class="kv mono muted">${esc(truncate(b.merkle_root, 16))}${copyBtn(b.merkle_root)}</span></td>
+            <td><span class="kv">${num(n)}<span class="bars" title="${n} records"><i style="width:${pct}%"></i></span></span></td>
+            <td><span class="kv mono muted">${esc(truncate(b.tx_id, 10) || "-")}${b.tx_id ? copyBtn(b.tx_id) : ""}</span></td>
+            <td class="faint" title="${escAttr(absTime(b.batched_at))}">${relTime(b.batched_at)}</td>
+            <td style="text-align:right"><span class="toolbar" style="justify-content:flex-end">
+              <button class="ghost sm" data-verify="${escAttr(b.batch_id)}">verify</button>
+              <button class="subtle sm" data-public="${escAttr(b.batch_id)}" data-root="${escAttr(b.merkle_root)}">public</button>
+            </span></td>
+          </tr>`;
+        }).join("");
+      } catch (e) {
+        tb.innerHTML = `<tr><td colspan="6"><div class="err" style="padding:16px">${esc(e.message)}</div></td></tr>`;
+      } finally {
+        tb.removeAttribute("aria-busy");
+      }
     }
 
-    async function verifyLogBatch(id) {
-      const cell = $("iv-" + id);
-      cell.textContent = "…";
-      const r = await req("POST", "/merkle/verify/" + encodeURIComponent(id));
-      const valid = r.body && (r.body.is_valid || r.body.integrity === "VALID");
-      cell.innerHTML = valid ? badge("VALID", "ok") : badge("CORRUPTED", "bad");
+    async function verifyBatch(id) {
+      const box = $("verify-result"); box.className = "result show";
+      box.innerHTML = `<span class="muted">Verifying <code>${esc(id)}</code>…</span>`;
+      box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const r = await req("POST", `/api/v1/${encodeURIComponent(domain())}/records/verify/${encodeURIComponent(id)}`);
+      if (r.status === 404) { box.innerHTML = `<span class="err">Batch <code>${esc(id)}</code> not found.</span>`; return; }
+      const b = r.data || {};
+      const integ = String(b.integrity || (b.is_valid ? "VALID" : "")).toUpperCase();
+      const head = integ === "VALID" ? `<span class="badge ok">VALID</span>`
+        : integ === "CORRUPTED" ? `<span class="badge bad">CORRUPTED</span>`
+        : `<span class="badge warn">${esc(integ || "UNANCHORED")}</span>`;
+      const rootRow = (k, val, ref) => {
+        const match = val && ref && val === ref;
+        const tag = val == null ? "" : match ? `<span class="badge ok">match</span>` : `<span class="badge bad">differs</span>`;
+        return `<div class="r"><span class="k">${esc(k)}</span><span class="kv mono">${esc(truncate(val, 22) || "-")}</span>${tag}</div>`;
+      };
+      box.innerHTML = `
+        <div class="head">${head}<code>${esc(id)}</code><span class="faint">anchor ${esc(b.anchor_status || "-")} · ${num(b.num_logs)} records</span></div>
+        <div class="roots">
+          ${rootRow("stored root", b.original_merkle_root, b.recalculated_merkle_root)}
+          ${rootRow("recalculated", b.recalculated_merkle_root, b.recalculated_merkle_root)}
+          ${rootRow("on-chain anchor", b.on_chain_merkle_root, b.recalculated_merkle_root)}
+        </div>
+        ${b.message ? `<p class="muted" style="margin:.7em 0 0">${esc(b.message)}</p>` : ""}`;
     }
 
-    async function verifyRecordBatch() {
-      const id = $("rec-batch").value.trim();
-      const dom = $("domain").value.trim() || "audit";
-      const out = $("rec-result");
-      if (!id) { out.innerHTML = '<span class="err">enter a batch id</span>'; return; }
-      out.textContent = "verifying…";
-      const r = await req("POST", `/api/v1/${encodeURIComponent(dom)}/records/verify/${encodeURIComponent(id)}`);
-      if (r.status === 404) { out.innerHTML = '<span class="err">batch not found</span>'; return; }
-      const b = r.body || {};
-      const valid = b.is_valid || b.integrity === "VALID";
-      out.innerHTML = `${valid ? badge("VALID", "ok") : badge("CORRUPTED", "bad")}
-        <span class="mono"> original=${short(b.original_merkle_root, 16)} recalculated=${short(b.recalculated_merkle_root, 16)}</span>`;
+    /* ---- Public verification ----------------------------------------------- */
+    async function publicVerify() {
+      const id = $("pub-batch").value.trim();
+      const root = $("pub-root").value.trim();
+      const box = $("pub-result"); box.className = "result show";
+      if (!id) { box.innerHTML = `<span class="err">Enter a batch id.</span>`; return; }
+      box.innerHTML = `<span class="muted">Checking <code>${esc(id)}</code>…</span>`;
+      const path = `/public/anchors/${encodeURIComponent(id)}` + (root ? `?root=${encodeURIComponent(root)}` : "");
+      const r = await req("GET", path);
+      if (r.status === 404) { box.innerHTML = `<div class="head"><span class="badge bad">NOT ANCHORED</span><code>${esc(id)}</code></div>`; return; }
+      if (!r.ok) { box.innerHTML = `<span class="err">Lookup error (HTTP ${r.status}).</span>`; return; }
+      const d = r.data || {};
+      let matchLine = "";
+      if (root) {
+        matchLine = d.root_matches
+          ? `<div class="r"><span class="k">your root</span><span class="badge ok">matches the anchor</span></div>`
+          : `<div class="r"><span class="k">your root</span><span class="badge bad">does not match</span></div>`;
+      }
+      box.innerHTML = `
+        <div class="head"><span class="badge ok">ANCHORED</span><code>${esc(id)}</code><span class="faint">${relTime(d.anchored_at)}</span></div>
+        <div class="roots">
+          <div class="r"><span class="k">anchored merkle root</span><span class="kv mono">${esc(truncate(d.merkle_root, 28))}${copyBtn(d.merkle_root)}</span></div>
+          ${matchLine}
+        </div>
+        <p class="muted" style="margin:.7em 0 0">No API key used. Only "anchored: yes/no + timestamp" is exposed, so no tenant metadata leaks.</p>`;
     }
 
-    async function connect() {
+    /* ---- Event delegation --------------------------------------------------- */
+    function toggleDetail(triggerEl) {
+      const id = triggerEl.getAttribute("data-toggle");
+      const row = $(id);
+      if (!row) return;
+      const open = row.classList.toggle("open");
+      triggerEl.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    async function copyText(text, btn) {
+      try {
+        await navigator.clipboard.writeText(text);
+        const prev = btn.innerHTML; btn.innerHTML = icon("check");
+        setTimeout(() => { btn.innerHTML = prev; }, 900);
+      } catch { /* clipboard blocked: no-op */ }
+    }
+    document.addEventListener("click", (e) => {
+      const cp = e.target.closest("[data-copy]"); if (cp) { e.stopPropagation(); copyText(cp.dataset.copy, cp); return; }
+      const vb = e.target.closest("[data-verify]"); if (vb) { e.stopPropagation(); verifyBatch(vb.dataset.verify); return; }
+      const pb = e.target.closest("[data-public]"); if (pb) {
+        e.stopPropagation();
+        $("pub-batch").value = pb.dataset.public; $("pub-root").value = pb.dataset.root || "";
+        publicVerify();
+        $("pub-batch").scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      const tg = e.target.closest("[data-toggle]"); if (tg) { toggleDetail(tg); return; }
+    });
+    document.addEventListener("keydown", (e) => {
+      const tg = e.target.closest && e.target.closest("[data-toggle]");
+      if (tg && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggleDetail(tg); }
+    });
+
+    /* ---- Orchestration ------------------------------------------------------ */
+    async function refreshAll() {
       $("conn-err").textContent = "";
-      store.save($("base").value.trim(), $("key").value.trim(), $("domain").value.trim());
+      $("pdf-link").href = `${base()}/api/v1/${encodeURIComponent(domain())}/report.pdf`;
       try {
         await loadHealth();
-        await Promise.all([loadStats(), loadBatches()]);
+        await Promise.all([loadOverview(), loadRecords(), loadBatches()]);
+        $("last-updated").textContent = "updated " + new Date().toLocaleTimeString();
       } catch (e) { $("conn-err").textContent = e.message; }
     }
+    async function connect() { store.save(); await refreshAll(); }
 
-    // init
+    let timer = null;
+    function setAuto(on) {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (on) timer = setInterval(() => { loadHealth(); loadOverview(); loadBatches(); }, 10000);
+      localStorage.setItem("aeternislog.auto", on ? "1" : "0");
+    }
+
+    /* ---- Init --------------------------------------------------------------- */
+    function paintStaticIcons() {
+      const map = {
+        connect: "link", refresh: "refresh", anchor: "anchor", plus: "plus",
+        reload: "reload", pdf: "download", shield: "shield",
+      };
+      document.querySelectorAll("[data-icon-slot]").forEach((el) => {
+        const ic = icon(map[el.dataset.iconSlot] || "");
+        // Prepend the icon, keep any existing text label.
+        el.insertAdjacentHTML("afterbegin", ic);
+      });
+      $("search-ico").innerHTML = icon("search");
+    }
+
     $("base").value = store.base; $("key").value = store.key; $("domain").value = store.domain;
-    $("connect").addEventListener("click", connect);
-    $("verify-rec").addEventListener("click", verifyRecordBatch);
-    connect();
+    paintStaticIcons();
+    renderPipeline();
+    renderKpis(null); renderActivity(null); renderCoverage(null); renderStatusDist();
+
+    $("connect").onclick = connect;
+    $("refresh").onclick = refreshAll;
+    $("create-rec").onclick = createRecord;
+    $("reload-rec").onclick = loadRecords;
+    $("anchor-btn").onclick = anchorPending;
+    $("pub-verify").onclick = publicVerify;
+    $("rec-search").addEventListener("input", renderRecords);
+    $("rec-level").addEventListener("change", renderRecords);
+    $("rec-source-q").addEventListener("keydown", (e) => { if (e.key === "Enter") loadRecords(); });
+
+    const autoOn = localStorage.getItem("aeternislog.auto") === "1";
+    $("auto").checked = autoOn; setAuto(autoOn);
+    $("auto").addEventListener("change", (e) => setAuto(e.target.checked));
+
+    refreshAll();
   </script>
 </body>
 </html>

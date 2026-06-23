@@ -79,6 +79,29 @@ services:
       timeout: 3s
       retries: 5
 
+  # Static integrity dashboard (examples/dashboard), served by nginx. It is a
+  # dependency-free single-page app with no build step, so nginx just serves the
+  # files from a read-only bind mount. The browser talks to the API directly at
+  # the published host port (default http://localhost:5001), not through nginx,
+  # so no reverse-proxy config is needed. See examples/dashboard/README.md.
+  dashboard:
+    image: nginx:1.27-alpine
+    container_name: aeternislog-dashboard
+    hostname: dashboard
+    ports:
+      - "8088:80"
+    volumes:
+      - ../examples/dashboard:/usr/share/nginx/html:ro
+    networks:
+      - aeternislog-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
 volumes:
   mongodb-data:
     driver: local
