@@ -1,13 +1,17 @@
-/* AeternisLog brand theme for Starlight — cyan/indigo on slate, dark-first. */
-:root {
-  /* Accent (cyan/sky) — generated to pair with the slate background. */
-  --sl-color-accent-low: #032330;
-  --sl-color-accent: #1c93cf;
-  --sl-color-accent-high: #a9e0fb;
+/* AeternisLog brand theme for Starlight: Geist type, cyan accent on slate. */
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 
-  --al-cyan: #38bdf8;
-  --al-indigo: #818cf8;
-  --sl-content-width: 50rem;
+:root {
+  --sl-font: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --sl-font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Single accent: cyan. Generated to pair with the slate canvas. */
+  --sl-color-accent-low: #032330;
+  --sl-color-accent: #1f9ed1;
+  --sl-color-accent-high: #aae1fb;
+
+  --sl-content-width: 48rem;
 }
 
 /* Dark theme (default): slate canvas matching the product dashboard. */
@@ -23,7 +27,7 @@
   --sl-color-gray-6: #111c30;
 }
 
-/* Light theme: warm-neutral, keeps the cyan accent. */
+/* Light theme: clean neutral, same cyan accent. */
 :root[data-theme='light'] {
   --sl-color-accent-low: #d7f0fb;
   --sl-color-accent: #0e7bb0;
@@ -32,47 +36,23 @@
   --sl-color-bg-sidebar: #f6f8fb;
 }
 
-/* Header polish: subtle blur + hairline already themed above. */
-.site-title {
-  font-weight: 650;
-  letter-spacing: 0.2px;
+/* Tighter, more intentional display type in headings. */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
+  letter-spacing: -0.02em;
+}
+.site-title { font-weight: 640; letter-spacing: 0.1px; }
+.site-title img { height: 1.55rem; }
+
+/* Splash (landing) breathes full-width without the prose max-width. */
+:root[data-has-hero] .sl-markdown-content,
+.template-splash .sl-markdown-content {
+  --sl-content-width: 64rem;
 }
 
-/* Landing hero: brand gradient glow behind the splash. */
-.hero {
-  position: relative;
-}
-.hero > .stack {
-  position: relative;
-  z-index: 1;
-}
-[data-has-hero] .hero h1,
-.hero h1 {
-  background: linear-gradient(120deg, var(--al-cyan), var(--al-indigo));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-[data-has-hero] main {
-  background:
-    radial-gradient(900px 460px at 85% -8%, rgba(56, 189, 248, 0.12), transparent 60%),
-    radial-gradient(820px 420px at -5% 5%, rgba(129, 140, 248, 0.12), transparent 55%);
-}
-
-/* Hero call-to-action buttons. */
-.hero .actions a[data-variant='primary'] {
-  background: linear-gradient(180deg, var(--al-cyan), #22a7e6);
-  color: #04222f;
-  border: 0;
-}
-
-/* Cards: a touch more contrast on dark. */
-:root[data-theme='dark'] .card {
-  background: #111c30;
-  border-color: #21304c;
-}
-
-/* Tighten the brand mark next to the title. */
-.site-title img {
-  height: 1.65rem;
+/* The landing renders its own hero (.lp); hide Starlight's auto page-title H1
+   there so it isn't duplicated above the custom hero. */
+main:has(.lp) .sl-container > h1 {
+  display: none;
 }

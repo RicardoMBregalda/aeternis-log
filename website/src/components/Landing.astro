@@ -1,0 +1,263 @@
+---
+import { Icon } from '@astrojs/starlight/components';
+
+const base = import.meta.env.BASE_URL; // "/aeternis-log/"
+const href = (p: string) => `${base}${p}`.replace(/\/{2,}/g, '/');
+const gh = 'https://github.com/RicardoMBregalda/aeternis-log';
+
+const flow = [
+  { icon: 'document', label: 'Record', note: 'Any JSON payload' },
+  { icon: 'seti:db', label: 'MongoDB', note: 'Fast, queryable' },
+  { icon: 'puzzle', label: 'Merkle root', note: 'One hash per batch' },
+  { icon: 'approve-check', label: 'Anchor on Fabric', note: 'Write-once' },
+  { icon: 'magnifier', label: 'Verify', note: 'Recompute vs chain' },
+];
+
+const useCases = [
+  { icon: 'open-book', title: 'Compliance & audit', body: 'Prove to a regulator that audit records are complete and unaltered, on an independent ledger.' },
+  { icon: 'random', title: 'Supply chain', body: 'Anchor chain-of-custody events so every party verifies provenance without a central operator.' },
+  { icon: 'document', title: 'Financial & legal', body: 'Give contracts, ledgers, and statements a timestamped proof that holds up independently.' },
+  { icon: 'warning', title: 'Security logs', body: "Make tamper-evident logs the default, so a breach can't quietly rewrite history." },
+];
+---
+
+<div class="lp">
+  <!-- HERO -->
+  <section class="hero reveal">
+    <div class="hero-copy">
+      <p class="kicker">Tamper-evident data anchoring</p>
+      <h1>Make data tampering<br /><span class="accent">impossible to hide.</span></h1>
+      <p class="lede">
+        AeternisLog anchors a cryptographic fingerprint of every record on a
+        permissioned blockchain, so any change is mathematically detectable.
+      </p>
+      <div class="actions">
+        <a class="btn primary" href={href('getting-started/quickstart/')}>
+          Get started <Icon name="right-arrow" size="1em" />
+        </a>
+        <a class="btn ghost" href={href('introduction/how-it-works/')}>How it works</a>
+      </div>
+    </div>
+
+    <!-- Designed verification graphic with real values (not an app screenshot). -->
+    <div class="proof">
+      <div class="proof-top">
+        <span class="proof-label">Integrity check</span>
+        <span class="badge"><Icon name="approve-check" size="0.9em" /> VALID</span>
+      </div>
+      <div class="proof-pair">
+        <span class="pk">on-chain root</span>
+        <code class="pv">20e1a987…0e7310c</code>
+      </div>
+      <div class="proof-link"><span class="line"></span><span class="match">roots match</span><span class="line"></span></div>
+      <div class="proof-pair">
+        <span class="pk">recomputed</span>
+        <code class="pv">20e1a987…0e7310c</code>
+      </div>
+      <p class="proof-foot">Recompute the root from the data and it matches the chain. Change one byte and it never will.</p>
+      <div class="proof-meta"><span>anchored on Fabric</span><code>tx 1d96e697…970398</code></div>
+    </div>
+  </section>
+
+  <!-- TRUST FLOW (full-bleed band) -->
+  <section class="band">
+    <div class="band-inner reveal">
+      <h2 class="band-title">From a record to a proof anyone can check</h2>
+      <ol class="flow">
+        {flow.map((s, i) => (
+          <li class="step">
+            <span class="step-ic"><Icon name={s.icon} size="1.15rem" /></span>
+            <span class="step-label">{s.label}</span>
+            <span class="step-note">{s.note}</span>
+            {i < flow.length - 1 && <span class="step-arrow"><Icon name="right-arrow" size="1rem" /></span>}
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <!-- VALUE / BENTO -->
+  <section class="value">
+    <div class="bento reveal">
+      <article class="cell lead">
+        <Icon name="approve-check" size="1.6rem" />
+        <h3>Tamper-evidence is structural, not a promise</h3>
+        <p>
+          Records are hashed with a length-prefixed, domain-separated scheme and
+          folded into a Merkle tree. The root is anchored write-once on Hyperledger
+          Fabric. Alter one byte and the recomputed root no longer matches the chain.
+        </p>
+        <a class="textlink" href={href('security/cryptography/')}>The cryptographic design <Icon name="right-arrow" size="0.9em" /></a>
+      </article>
+      <article class="cell">
+        <Icon name="puzzle" size="1.4rem" />
+        <h3>Ledger-enforced isolation</h3>
+        <p>The chaincode keys batch state by the caller's signed identity, so one tenant can never read or overwrite another's.</p>
+      </article>
+      <article class="cell">
+        <Icon name="open-book" size="1.4rem" />
+        <h3>Trustless SDKs</h3>
+        <p>Go and Python SDKs recompute hashes and roots locally, so integrity is verifiable without trusting the server.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- USE CASES -->
+  <section class="cases reveal">
+    <h2>Built for auditable systems</h2>
+    <div class="case-grid">
+      {useCases.map((c) => (
+        <article class="case">
+          <span class="case-ic"><Icon name={c.icon} size="1.25rem" /></span>
+          <h3>{c.title}</h3>
+          <p>{c.body}</p>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <!-- EDITIONS / CTA (full-bleed band) -->
+  <section class="band cta">
+    <div class="band-inner reveal cta-inner">
+      <div>
+        <h2 class="band-title">Open core, enterprise-ready</h2>
+        <p class="cta-sub">The Community edition is the full self-hostable platform. Enterprise adds per-tenant ledger isolation, production datastores, and support.</p>
+      </div>
+      <div class="cta-actions">
+        <a class="btn primary" href={href('commercial/editions/')}>Compare editions <Icon name="right-arrow" size="1em" /></a>
+        <a class="btn ghost" href={gh}>View on GitHub</a>
+      </div>
+    </div>
+  </section>
+</div>
+
+<style>
+  .lp { --accent: #38bdf8; --accent-bg: #38bdf8; --line: #1f2b44; --card: #111c30; }
+  /* Light mode: lift the surfaces and darken the cyan so text/icons keep contrast. */
+  :global(:root[data-theme='light']) .lp { --accent: #0e7bb0; --line: #dbe3ee; --card: #f6f8fb; }
+  .lp :global(svg) { vertical-align: -0.12em; }
+
+  /* Reveal motion, reduced-motion safe */
+  .reveal { opacity: 1; }
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(18px); animation: rise 0.7s cubic-bezier(0.16,1,0.3,1) forwards; }
+    @supports (animation-timeline: view()) {
+      .band-inner.reveal, .bento.reveal, .cases.reveal, .cta-inner.reveal {
+        animation: rise both; animation-timeline: view(); animation-range: entry 0% cover 26%;
+      }
+    }
+  }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  /* ---------- HERO ---------- */
+  .hero {
+    display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 3.5rem;
+    align-items: center; padding: 2.5rem 0 4rem;
+  }
+  .kicker {
+    font-size: 0.82rem; font-weight: 600; letter-spacing: 0.01em;
+    color: var(--accent); margin: 0 0 1rem;
+  }
+  .hero h1 {
+    font-size: clamp(2.5rem, 5vw, 3.85rem); line-height: 1.04; letter-spacing: -0.025em;
+    font-weight: 680; margin: 0 0 1.1rem;
+  }
+  .hero h1 .accent { color: var(--accent); }
+  .lede { font-size: 1.16rem; line-height: 1.6; color: var(--sl-color-gray-2);
+    max-width: 34rem; margin: 0 0 1.8rem; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.72rem 1.25rem;
+    border-radius: 10px; font-weight: 600; font-size: 0.98rem; text-decoration: none;
+    transition: transform .08s ease, filter .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent-bg); color: #04222f; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.ghost { color: var(--sl-color-white); border: 1px solid var(--line); }
+  .btn.ghost:hover { border-color: var(--accent); background: rgba(56,189,248,.07); }
+
+  /* Verification proof graphic */
+  .proof {
+    border: 1px solid var(--line); border-radius: 16px; padding: 1.4rem 1.5rem 1.25rem;
+    background: radial-gradient(130% 100% at 100% 0%, rgba(56,189,248,.08), transparent 55%), var(--card);
+    box-shadow: 0 24px 70px rgba(0,0,0,.4);
+  }
+  .proof-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.1rem; }
+  .proof-label { font-size: 0.82rem; color: var(--sl-color-gray-3); letter-spacing: 0.01em; }
+  .badge { display: inline-flex; align-items: center; gap: 0.35rem; background: rgba(52,211,153,.14);
+    color: #34d399; font-weight: 700; letter-spacing: 0.04em; padding: 0.28rem 0.7rem; border-radius: 999px; font-size: 0.82rem; }
+  .proof-pair { display: flex; flex-direction: column; gap: 0.25rem; }
+  .pk { font-size: 0.78rem; color: var(--sl-color-gray-3); }
+  .pv { font-family: var(--sl-font-mono, monospace); font-size: 1.02rem; color: var(--sl-color-white); letter-spacing: 0.01em; }
+  .proof-link { display: flex; align-items: center; gap: 0.7rem; margin: 0.65rem 0; }
+  .proof-link .line { height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--line), transparent); }
+  .proof-link .match { font-size: 0.74rem; color: #34d399; font-weight: 600; white-space: nowrap; }
+  .proof-foot { margin: 1.1rem 0 0; font-size: 0.84rem; line-height: 1.55; color: var(--sl-color-gray-3); }
+  .proof-meta { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.9rem;
+    padding-top: 0.8rem; border-top: 1px solid var(--line); font-size: 0.74rem; color: var(--sl-color-gray-4); }
+  .proof-meta code { font-family: var(--sl-font-mono, monospace); }
+
+  /* ---------- FULL-BLEED BANDS ---------- */
+  .band { position: relative; width: 100vw; left: 50%; margin-left: -50vw; margin-top: 3rem;
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(56,189,248,.035), transparent); }
+  .band-inner { max-width: 60rem; margin: 0 auto; padding: 3rem 1.5rem; }
+  .band-title { font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: -0.02em; margin: 0 0 1.6rem; text-align: center; }
+
+  .flow { list-style: none; display: flex; justify-content: center; flex-wrap: wrap;
+    gap: 0.5rem 0.25rem; padding: 0; margin: 0; }
+  .step { position: relative; display: flex; flex-direction: column; align-items: center;
+    text-align: center; padding: 0 0.6rem; min-width: 6.2rem; }
+  .step-ic { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 12px;
+    background: rgba(56,189,248,.12); color: var(--accent); border: 1px solid var(--line); margin-bottom: 0.5rem; }
+  .step-label { font-weight: 600; font-size: 0.92rem; }
+  .step-note { font-size: 0.76rem; color: var(--sl-color-gray-3); margin-top: 0.1rem; }
+  .step-arrow { position: absolute; right: -0.55rem; top: 0.7rem; color: var(--sl-color-gray-4); }
+
+  /* ---------- BENTO ---------- */
+  .value { padding: 3.5rem 0 0; }
+  .bento { display: grid; grid-template-columns: 1.3fr 1fr; grid-auto-rows: 1fr; gap: 1rem; }
+  .cell { border: 1px solid var(--line); border-radius: 16px; padding: 1.6rem 1.5rem; background: var(--card); }
+  .cell :global(svg) { color: var(--accent); }
+  .cell h3 { font-size: 1.18rem; letter-spacing: -0.01em; margin: 0.7rem 0 0.5rem; }
+  .cell p { color: var(--sl-color-gray-2); line-height: 1.6; margin: 0; font-size: 0.96rem; }
+  .cell.lead { grid-row: span 2;
+    background: radial-gradient(120% 90% at 100% 0%, rgba(56,189,248,.10), transparent 55%), var(--card); }
+  .cell.lead h3 { font-size: 1.4rem; }
+  .textlink { display: inline-flex; align-items: center; gap: 0.35rem; margin-top: 1rem;
+    color: var(--accent); font-weight: 600; font-size: 0.95rem; text-decoration: none; }
+  .textlink:hover { text-decoration: underline; }
+
+  /* ---------- USE CASES ---------- */
+  .cases { padding: 3.5rem 0 1rem; }
+  .cases h2 { font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: -0.02em; margin: 0 0 1.6rem; }
+  .case-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  .case { border: 1px solid var(--line); border-radius: 14px; padding: 1.4rem 1.45rem;
+    background: var(--card); transition: border-color .15s ease, transform .15s ease; }
+  .case:hover { border-color: rgba(56,189,248,.4); transform: translateY(-2px); }
+  .case-ic { display: grid; place-items: center; width: 2.2rem; height: 2.2rem; border-radius: 10px;
+    background: rgba(56,189,248,.12); color: var(--accent); margin-bottom: 0.7rem; }
+  .case h3 { font-size: 1.05rem; margin: 0 0 0.35rem; }
+  .case p { font-size: 0.92rem; line-height: 1.55; color: var(--sl-color-gray-2); margin: 0; }
+
+  /* ---------- CTA ---------- */
+  .cta { margin-bottom: 0; }
+  .cta-inner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; max-width: 64rem; }
+  .cta-sub { color: var(--sl-color-gray-2); line-height: 1.6; margin: 0.5rem 0 0; max-width: 40rem; }
+  .cta .band-title { text-align: left; margin: 0; }
+  .cta-actions { display: flex; gap: 0.7rem; flex-shrink: 0; }
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width: 50rem) {
+    .hero { grid-template-columns: 1fr; gap: 2.2rem; padding-top: 1rem; }
+    .proof { order: 2; }
+    .bento { grid-template-columns: 1fr; }
+    .cell.lead { grid-row: auto; }
+    .case-grid { grid-template-columns: 1fr; }
+    .cta-inner { flex-direction: column; align-items: flex-start; }
+    .flow { gap: 1rem; }
+    .step-arrow { display: none; }
+  }
+</style>
