@@ -1,0 +1,36 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#0d1a2e"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="80" y1="150" x2="220" y2="290" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.85" cy="0.05" r="0.7">
+      <stop stop-color="#38bdf8" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="0" y="0" width="1200" height="6" fill="url(#mark)"/>
+
+  <!-- brand mark -->
+  <rect x="80" y="150" width="140" height="140" rx="34" fill="url(#mark)"/>
+  <g fill="none" stroke="#04222f" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M126 256 L150 188 L174 256"/>
+    <path d="M135 230 H165"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="250" y="245" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="72" font-weight="700" fill="#e7edf6">AeternisLog</text>
+
+  <!-- headline -->
+  <text x="82" y="400" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="700" fill="#e7edf6">Cryptographic proof of</text>
+  <text x="82" y="470" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="700" fill="#38bdf8">integrity for any data</text>
+
+  <!-- subline -->
+  <text x="82" y="540" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="30" fill="#93a4bd">Tamper-evident data anchoring · Merkle trees on Hyperledger Fabric</text>
+</svg>
