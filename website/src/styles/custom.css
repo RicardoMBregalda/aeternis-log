@@ -6,53 +6,230 @@
   --sl-font: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --sl-font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Single accent: cyan. Generated to pair with the slate canvas. */
-  --sl-color-accent-low: #032330;
+  /* Single accent: cyan. */
+  --sl-color-accent-low: #042c3d;
   --sl-color-accent: #1f9ed1;
-  --sl-color-accent-high: #aae1fb;
+  --sl-color-accent-high: #b6e4fb;
 
-  --sl-content-width: 48rem;
+  --al-cyan: #38bdf8;
+  --sl-content-width: 47rem;
 }
 
-/* Dark theme (default): slate canvas matching the product dashboard. */
-:root,
+/* DARK theme (scoped to dark only, so none of these leak into light mode). */
 :root[data-theme='dark'] {
   --sl-color-bg: #0b1220;
   --sl-color-bg-nav: rgba(11, 18, 32, 0.72);
-  --sl-color-bg-sidebar: #0c1424;
-  --sl-color-bg-inline-code: #16213a;
-  --sl-color-hairline: #1f2b44;
-  --sl-color-hairline-shade: #1a2640;
-  --sl-color-gray-7: #0c1424;
-  --sl-color-gray-6: #111c30;
+  --sl-color-bg-sidebar: #0c1526;
+  --sl-color-bg-inline-code: #182238;
+  --sl-color-hairline: #1e2b45;
+  --sl-color-hairline-shade: #18233b;
+  --sl-color-gray-7: #0d1626;
+  --sl-color-gray-6: #131f33;
+  --al-surface: #111c30;
+  --al-surface-2: #0e1728;
+  --al-line: #21304c;
+  --al-accent-tint: rgba(56, 189, 248, 0.1);
+  --al-code-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
 }
 
-/* Light theme: clean neutral, same cyan accent. */
+/* LIGHT theme: clean neutral, same cyan accent (darkened for contrast). */
 :root[data-theme='light'] {
   --sl-color-accent-low: #d7f0fb;
-  --sl-color-accent: #0e7bb0;
-  --sl-color-accent-high: #06384f;
+  --sl-color-accent: #0d7aae;
+  --sl-color-accent-high: #064058;
   --sl-color-bg: #ffffff;
-  --sl-color-bg-sidebar: #f6f8fb;
+  --sl-color-bg-sidebar: #f7f9fc;
+  --sl-color-bg-inline-code: #eef3f9;
+  --al-surface: #f7f9fc;
+  --al-surface-2: #fbfcfe;
+  --al-line: #e3e9f1;
+  --al-accent-tint: rgba(13, 122, 174, 0.08);
+  --al-code-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
 }
 
-/* Tighter, more intentional display type in headings. */
-.sl-markdown-content h1,
-.sl-markdown-content h2,
-.sl-markdown-content h3 {
-  letter-spacing: -0.02em;
-}
+/* ============================ GLOBAL CHROME ============================ */
 .site-title { font-weight: 640; letter-spacing: 0.1px; }
 .site-title img { height: 1.55rem; }
 
-/* Splash (landing) breathes full-width without the prose max-width. */
+/* Subtle brand glow behind the page, very faint. */
+:root[data-theme='dark'] .main-frame::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(900px 480px at 88% -6%, rgba(56, 189, 248, 0.07), transparent 60%),
+    radial-gradient(760px 420px at 0% 4%, rgba(129, 140, 248, 0.06), transparent 55%);
+}
+
+/* Sidebar: active item gets a cyan accent bar + tint. */
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover {
+  color: var(--sl-color-white);
+  background: var(--al-accent-tint);
+  border-radius: 7px;
+  position: relative;
+  font-weight: 600;
+}
+.sidebar-content a[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 1.05em;
+  border-radius: 2px;
+  background: var(--al-cyan);
+}
+.sidebar-content summary,
+.sidebar-content a { border-radius: 7px; }
+.sidebar-content .large { letter-spacing: 0.01em; }
+
+/* Right TOC: active link in accent. */
+starlight-toc a[aria-current='true'] {
+  color: var(--sl-color-accent-high);
+  font-weight: 600;
+}
+
+/* ============================ CONTENT TYPOGRAPHY ============================ */
+.sl-markdown-content {
+  --sl-text-h2: 1.65rem;
+  --sl-text-h3: 1.28rem;
+}
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+  letter-spacing: -0.02em;
+  font-weight: 660;
+}
+
+/* Page title: a touch more presence. */
+.content-panel .sl-container > h1 {
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  letter-spacing: -0.03em;
+}
+
+/* H2 with a small cyan accent bar above it (sectioning cue). */
+.sl-markdown-content h2 {
+  position: relative;
+  margin-top: 2.6rem;
+  padding-top: 1.1rem;
+}
+.sl-markdown-content h2::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  inset-inline-start: 0;
+  width: 2.25rem;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--al-cyan), transparent);
+}
+
+/* Links: cyan, considered underline. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-accent-high);
+  text-decoration-color: color-mix(in srgb, var(--sl-color-accent) 45%, transparent);
+  text-underline-offset: 0.18em;
+  transition: color 0.15s ease;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  color: var(--al-cyan);
+  text-decoration-color: var(--al-cyan);
+}
+
+/* Inline code: a clean pill. */
+.sl-markdown-content :not(pre) > code {
+  border: 1px solid var(--al-line);
+  border-radius: 6px;
+  padding: 0.1em 0.4em;
+  font-size: 0.86em;
+}
+
+/* Code blocks (Expressive Code): rounded, framed, soft shadow. */
+.expressive-code .frame {
+  border-radius: 12px;
+}
+.expressive-code .frame pre {
+  border: 1px solid var(--al-line);
+  border-radius: 12px;
+  box-shadow: var(--al-code-shadow);
+}
+.expressive-code .frame.has-title .header,
+.expressive-code .frame.is-terminal .header {
+  border-start-start-radius: 12px;
+  border-start-end-radius: 12px;
+}
+
+/* Blockquotes: accent edge. */
+.sl-markdown-content blockquote {
+  border-inline-start: 3px solid var(--sl-color-accent);
+  background: var(--al-accent-tint);
+  border-radius: 0 10px 10px 0;
+  padding: 0.2rem 1.1rem;
+}
+
+/* Tables: rounded, tinted header, hairline rows. */
+.sl-markdown-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--al-line);
+  border-radius: 12px;
+  overflow: hidden;
+  width: 100%;
+}
+.sl-markdown-content th {
+  background: var(--al-surface);
+  font-weight: 640;
+  letter-spacing: 0.01em;
+}
+.sl-markdown-content th,
+.sl-markdown-content td {
+  border: 0;
+  border-bottom: 1px solid var(--al-line);
+  padding: 0.62rem 0.9rem;
+}
+.sl-markdown-content tbody tr:last-child td { border-bottom: 0; }
+.sl-markdown-content tbody tr:hover td { background: var(--al-surface-2); }
+
+/* Asides / callouts: rounded with a stronger accent edge. */
+.sl-markdown-content .starlight-aside {
+  border-radius: 11px;
+  border-inline-start-width: 3px;
+  padding: 1rem 1.15rem;
+}
+.sl-markdown-content .starlight-aside__title { letter-spacing: 0.01em; }
+
+/* Horizontal rule: subtle gradient. */
+.sl-markdown-content hr {
+  border: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--al-line) 18%, var(--al-line) 82%, transparent);
+}
+
+/* Cards / link cards: brand surface + hover lift. */
+.sl-markdown-content .card,
+.sl-markdown-content .sl-link-card {
+  background: var(--al-surface);
+  border: 1px solid var(--al-line);
+  border-radius: 13px;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.sl-markdown-content .card:hover,
+.sl-markdown-content .sl-link-card:hover {
+  border-color: color-mix(in srgb, var(--sl-color-accent) 55%, var(--al-line));
+  transform: translateY(-2px);
+  box-shadow: var(--al-code-shadow);
+}
+.sl-markdown-content .card .icon { color: var(--al-cyan); }
+
+/* ============================ SPLASH (landing) ============================ */
 :root[data-has-hero] .sl-markdown-content,
 .template-splash .sl-markdown-content {
   --sl-content-width: 64rem;
 }
-
-/* The landing renders its own hero (.lp); hide Starlight's auto page-title H1
-   there so it isn't duplicated above the custom hero. */
-main:has(.lp) .sl-container > h1 {
-  display: none;
-}
+/* Hide Starlight's auto page-title on the landing (the custom hero is the H1). */
+main:has(.lp) .sl-container > h1 { display: none; }

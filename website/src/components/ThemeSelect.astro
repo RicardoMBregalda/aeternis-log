@@ -1,0 +1,81 @@
+---
+// Custom Starlight ThemeSelect override: a segmented light / dark / system toggle.
+// Syncs with Starlight's own mechanism (localStorage key `starlight-theme` and the
+// `data-theme` attribute set by ThemeProvider for FOUC-free first paint).
+import { Icon } from '@astrojs/starlight/components';
+---
+
+<al-theme-toggle class="al-theme" aria-label="Color theme">
+  <button type="button" data-set="light" title="Light" aria-label="Light"><Icon name="sun" /></button>
+  <button type="button" data-set="dark" title="Dark" aria-label="Dark"><Icon name="moon" /></button>
+  <button type="button" data-set="auto" title="System" aria-label="System"><Icon name="laptop" /></button>
+</al-theme-toggle>
+
+<script>
+  type Theme = 'auto' | 'dark' | 'light';
+  const KEY = 'starlight-theme';
+  const parse = (t: unknown): Theme => (t === 'dark' || t === 'light' || t === 'auto' ? t : 'auto');
+  const load = (): Theme => parse(typeof localStorage !== 'undefined' && localStorage.getItem(KEY));
+  const system = (): 'light' | 'dark' =>
+    matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+
+  function apply(t: Theme) {
+    document.documentElement.dataset.theme = t === 'auto' ? system() : t;
+    try {
+      localStorage.setItem(KEY, t === 'light' || t === 'dark' ? t : '');
+    } catch {}
+    document.querySelectorAll<HTMLElement>('al-theme-toggle button[data-set]').forEach((b) =>
+      b.setAttribute('aria-pressed', String(b.dataset.set === t))
+    );
+  }
+
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+    if (load() === 'auto') apply('auto');
+  });
+
+  class AlThemeToggle extends HTMLElement {
+    connectedCallback() {
+      this.querySelectorAll<HTMLElement>('button[data-set]').forEach((b) =>
+        b.addEventListener('click', () => apply(parse(b.dataset.set)))
+      );
+      apply(load());
+    }
+  }
+  if (!customElements.get('al-theme-toggle')) customElements.define('al-theme-toggle', AlThemeToggle);
+</script>
+
+<style>
+  .al-theme {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--sl-color-gray-6) 60%, transparent);
+  }
+  .al-theme button {
+    display: grid;
+    place-items: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sl-color-gray-3);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .al-theme button:hover {
+    color: var(--sl-color-white);
+    background: color-mix(in srgb, var(--sl-color-gray-5) 45%, transparent);
+  }
+  .al-theme button[aria-pressed='true'] {
+    background: #38bdf8;
+    color: #04222f;
+  }
+  .al-theme :global(svg) {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+</style>
